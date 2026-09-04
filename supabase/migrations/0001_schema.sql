@@ -209,7 +209,7 @@ create table kgdj.proposed_changes (
   target_edge_id  uuid references kgdj.edges (id) on delete cascade,
   payload         jsonb not null default '{}'::jsonb,   -- fields to create/overwrite; see README for the per-type contract
   rationale       text not null default '',
-  blind_review    boolean not null default true,        -- decision 2: the submitter chooses, per submission, whether reviewer identities are hidden from them
+  submitter_anonymous boolean not null default false,   -- 2026-09-04: the SUBMITTER may hide their identity from members (never from editors/instructors) and may change this at any time; reviewers are always identified
   module_id       uuid references kgdj.modules (id) on delete set null,  -- course context, if submitted as coursework
   status          kgdj.proposal_status not null default 'draft',
   submitted_at    timestamptz,
@@ -248,7 +248,6 @@ create table kgdj.reviews (
   reviewer_id   uuid not null references kgdj.profiles (id) on delete cascade,
   rating        kgdj.review_rating not null,
   commentary_md text not null check (length(commentary_md) >= 1),   -- markdown; rendered sanitised in the UI
-  is_blind      boolean not null default true,    -- copied from the proposal's blind_review at insert (trigger); false for node/edge/subgraph reviews unless set
   week          int check (week between 1 and 15),  -- module week, for portfolio critiques
   created_at    timestamptz not null default now(),
   updated_at    timestamptz not null default now(),
@@ -354,6 +353,21 @@ create table kgdj.subgraph_shares (
 );
 
 -- (portfolio critiques live in kgdj.reviews with target_kind = 'subgraph')
+
+-- Reviewer-integrity flags (2026-09-04): promotion needs identifiable,
+-- credible reviewers. When every reviewer of a target has been erased
+-- (tombstoned), the target is flagged for fresh review; editors resolve.
+create table kgdj.review_flags (
+  id           uuid primary key default gen_random_uuid(),
+  target_kind  kgdj.review_target not null,
+  target_id    uuid not null,
+  reason       text not null,                         -- all_reviewers_deleted | ...
+  raised_at    timestamptz not null default now(),
+  resolved_at  timestamptz,
+  resolved_by  uuid references kgdj.profiles (id) on delete set null,
+  note         text
+);
+create index review_flags_open_idx on kgdj.review_flags (target_kind, target_id) where resolved_at is null;
 
 -- ---------------------------------------------------------------- accountability
 create table kgdj.audit_log (

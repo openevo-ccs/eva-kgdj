@@ -129,17 +129,23 @@ def main():
     bob.q("insert into kgdj.reviews (target_kind, proposal_id, reviewer_id, rating, commentary_md) values ('proposal',%s,%s,'accept','Good revision; consider also citing the **2019 Rakoczy review**.')", (pid, U["bob"]))
     assert admin.one("select status::text from kgdj.proposed_changes where id=%s", (pid,)) == "under_review"
     carla.q("insert into kgdj.reviews (target_kind, proposal_id, reviewer_id, rating, commentary_md) values ('proposal',%s,%s,'strongly_accept','Clear and well sourced.')", (pid, U["carla"]))
-    # blind per submission (decision 2): alice's proposal defaults to blind -> she sees ratings, not reviewers
-    rows = alice.q("select reviewer_id, rating::text from kgdj.reviews_visible where proposal_id=%s order by created_at", (pid,))
-    assert len(rows) == 2 and all(r[0] is None for r in rows) and rows[0][1] == "accept", rows
-    assert alice.one("select count(*) from kgdj.reviews where proposal_id=%s", (pid,)) == 0, "raw table hidden from proposer"
-    assert eve.one("select count(*) from kgdj.reviews_visible where proposal_id=%s and reviewer_id is not null", (pid,)) == 2, "editors see reviewers"
+    # reviewers are always identified: alice (the proposer) sees who reviewed
+    rows = alice.q("select reviewer_username, rating::text from kgdj.reviews_visible where proposal_id=%s order by created_at", (pid,))
+    assert len(rows) == 2 and rows[0][0] == "bob" and rows[1][0] == "carla", rows
+    # submitter anonymity: alice switches it on at any time; bob then sees no proposer, eve (editor) and carla (instructor) still do
+    alice.q("select kgdj.set_submission_anonymity(%s, true)", (pid,))
+    assert bob.one("select proposer_id from kgdj.proposals_visible where id=%s", (pid,)) is None
+    assert eve.one("select proposer_id from kgdj.proposals_visible where id=%s", (pid,)) == uuid.UUID(U["alice"])
+    assert carla.one("select proposer_id from kgdj.proposals_visible where id=%s", (pid,)) == uuid.UUID(U["alice"])
+    bob.expect_error("select kgdj.set_submission_anonymity(%s, false)", (pid,), contains="only the submitter")
+    alice.q("select kgdj.set_submission_anonymity(%s, false)", (pid,))
+    assert bob.one("select proposer_id from kgdj.proposals_visible where id=%s", (pid,)) == uuid.UUID(U["alice"])
     s = eve.q("select n_reviews, mean_score from kgdj.review_summary where target_kind='proposal' and target_id=%s", (pid,))[0]
     assert s[0] == 2 and float(s[1]) == 1.5, s
     # direct review of a seed node by anyone + editor promotion (decision 3)
     seed = admin.one("select id from kgdj.nodes where slug='dag-theory-population-genetics'")
-    bob.q("insert into kgdj.reviews (target_kind, node_id, reviewer_id, rating, commentary_md, is_blind) values ('node',%s,%s,'accept','Gloss is accurate; add Hartl & Clark as the defining citation.', false)", (seed, U["bob"]))
-    assert alice.one("select reviewer_id from kgdj.reviews_visible where node_id=%s", (seed,)) == uuid.UUID(U["bob"]), "non-blind node review shows reviewer"
+    bob.q("insert into kgdj.reviews (target_kind, node_id, reviewer_id, rating, commentary_md) values ('node',%s,%s,'accept','Gloss is accurate; add Hartl & Clark as the defining citation.')", (seed, U["bob"]))
+    assert alice.one("select reviewer_id from kgdj.reviews_visible where node_id=%s", (seed,)) == uuid.UUID(U["bob"]), "node review shows reviewer"
     eve.q("insert into kgdj.editorial_decisions (node_id, editor_id, decision, feedback) values (%s,%s,'promote','One review, editor agrees: promote.')", (seed, U["eve"]))
     assert admin.one("select status::text from kgdj.nodes where id=%s", (seed,)) == "canonical"
     print("reviews: anyone-reviews, blind-per-submission, summary, direct node promotion ok")
@@ -173,7 +179,7 @@ def main():
     assert eve.one("select count(*) from kgdj.student_subgraphs where id=%s", (sg,)) == 0, "editor does not"
     alice.q("insert into kgdj.subgraph_shares (subgraph_id, profile_id) values (%s,%s)", (sg, U["bob"]))
     assert bob.one("select count(*) from kgdj.subgraph_links where subgraph_id=%s", (sg,)) == 1, "shared classmate sees links"
-    bob.q("insert into kgdj.reviews (target_kind, subgraph_id, reviewer_id, rating, commentary_md, week, is_blind) values ('subgraph',%s,%s,'accept','Your mechanism lens could also connect to social learning.',2,false)", (sg, U["bob"]))
+    bob.q("insert into kgdj.reviews (target_kind, subgraph_id, reviewer_id, rating, commentary_md, week) values ('subgraph',%s,%s,'accept','Your mechanism lens could also connect to social learning.',2)", (sg, U["bob"]))
     alice.expect_error("insert into kgdj.reviews (target_kind, subgraph_id, reviewer_id, rating, commentary_md) values ('subgraph',%s,%s,'accept','self-critique')", (sg, U["alice"]), contains="conflict of interest")
     assert eve.one("select count(*) from kgdj.reviews_visible where subgraph_id=%s", (sg,)) == 0, "editor is not a module lecturer -> no portfolio reviews"
     assert carla.one("select count(*) from kgdj.reviews_visible where subgraph_id=%s", (sg,)) == 1, "instructor sees portfolio critique"
@@ -186,8 +192,19 @@ def main():
     alice.q("insert into kgdj.consent_records (profile_id, purpose, granted, policy_version) values (%s,'leaderboard_display',true,'v1')", (U["alice"],))
     assert alice.one("select count(*) from kgdj.leaderboard") == 1 and alice.one("select approved_proposals from kgdj.leaderboard") == 1
     alice.expect_error("select kgdj.erase_profile(%s)", (U["bob"],), contains="only the person")
-    bob.q("select kgdj.erase_profile(%s)", (U["bob"],))
+    bob.q("select kgdj.erase_profile(%s, true)", (U["bob"],))
     assert admin.one("select is_active from kgdj.profiles where id=%s", (U["bob"],)) is False
+    # integrity: the seed node bob alone reviewed is flagged; alice's proposal (also reviewed by carla) is not
+    flags = admin.q("select target_kind::text, target_id from kgdj.review_flags where resolved_at is null")
+    assert ("node", seed) in [(k, t) for k, t in flags], flags
+    assert not any(t == pid for _, t in flags), "proposal still has a credible reviewer (carla)"
+    assert admin.one("select all_reviewers_deleted from kgdj.review_summary where target_kind='node' and target_id=%s", (seed,)) is True
+    assert admin.one("select commentary_md from kgdj.reviews where node_id=%s", (seed,)).startswith("_[commentary withdrawn"), "redact_text honoured"
+    eve.q("insert into kgdj.reviews (target_kind, node_id, reviewer_id, rating, commentary_md) values ('node',%s,%s,'accept','Re-reviewed after the flag; gloss stands.')", (seed, U["eve"]))
+    fid = admin.one("select id from kgdj.review_flags where target_id=%s and resolved_at is null", (seed,))
+    eve.q("select kgdj.resolve_review_flag(%s, 'fresh identified review by eve')", (fid,))
+    assert admin.one("select count(*) from kgdj.review_flags where resolved_at is null") == 0
+    print("reviewer-integrity flag raised on erasure and resolved after re-review; text redaction ok")
     assert admin.one("select username::text from kgdj.profiles where id=%s", (U["bob"],)).startswith("deleted-")
     assert admin.one("select count(*) from auth.users where id=%s", (U["bob"],)) == 0, "auth row (email) deleted"
     assert admin.one("select count(*) from kgdj.reviews where reviewer_id=%s", (U["bob"],)) >= 2, "review records kept, attributed to the tombstone"

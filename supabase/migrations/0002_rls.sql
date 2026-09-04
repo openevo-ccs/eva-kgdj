@@ -90,8 +90,8 @@ $$;
 create or replace function kgdj.proposal_proposer(pid uuid) returns uuid language sql stable security definer set search_path = kgdj, public, extensions, pg_temp as $$
   select pc.proposer_id from kgdj.proposed_changes pc where pc.id = pid
 $$;
-create or replace function kgdj.proposal_blind(pid uuid) returns boolean language sql stable security definer set search_path = kgdj, public, extensions, pg_temp as $$
-  select pc.blind_review from kgdj.proposed_changes pc where pc.id = pid
+create or replace function kgdj.can_unmask_proposer(pid uuid) returns boolean language sql stable security definer set search_path = kgdj, public, extensions, pg_temp as $$
+  select exists (select 1 from kgdj.proposed_changes pc where pc.id = pid and (pc.proposer_id = auth.uid() or not pc.submitter_anonymous or kgdj.is_editor() or kgdj.is_module_instructor(pc.module_id)))
 $$;
 create or replace function kgdj.subgraph_owner(s uuid) returns uuid language sql stable security definer set search_path = kgdj, public, extensions, pg_temp as $$
   select g.owner_id from kgdj.student_subgraphs g where g.id = s
@@ -116,7 +116,7 @@ begin
   foreach t in array array['departments', 'node_types', 'relationship_types', 'profiles', 'allowed_domains', 'allowlist', 'modules',
                            'module_members', 'citations', 'nodes', 'edges', 'node_citations', 'edge_citations', 'proposed_changes',
                            'proposal_citations', 'reviews', 'editorial_decisions', 'student_subgraphs', 'subgraph_nodes',
-                           'subgraph_private_nodes', 'subgraph_links', 'subgraph_shares', 'audit_log', 'consent_records']
+                           'subgraph_private_nodes', 'subgraph_links', 'subgraph_shares', 'review_flags', 'audit_log', 'consent_records']
   loop
     execute format('alter table kgdj.%I enable row level security', t);
     execute format('alter table kgdj.%I force row level security', t);  -- applies to the table owner too (belt and braces)
@@ -185,6 +185,16 @@ create policy proposals_read on kgdj.proposed_changes for select to authenticate
   or kgdj.is_editor()
   or (status <> 'draft' and kgdj.is_member())
 );
+-- Submitter anonymity: the frontend lists proposals through this view, which
+-- nulls proposer_id unless the viewer is the proposer, an editor, or the
+-- module's instructor. (The raw table still exposes proposer_id to members —
+-- the app must use the view; a later hardening step can move the column.)
+create or replace view kgdj.proposals_visible with (security_invoker = true) as
+select pc.id, pc.change_type, pc.target_node_id, pc.target_edge_id, pc.payload, pc.rationale, pc.module_id, pc.status,
+       pc.submitted_at, pc.updated_at, pc.decided_at, pc.result_node_id, pc.result_edge_id, pc.submitter_anonymous,
+       case when kgdj.can_unmask_proposer(pc.id) then pc.proposer_id end as proposer_id
+from kgdj.proposed_changes pc;
+grant select on kgdj.proposals_visible to authenticated;
 create policy proposals_insert on kgdj.proposed_changes for insert to authenticated
   with check (kgdj.is_member() and proposer_id = auth.uid() and status in ('draft', 'pending'));
 -- proposer edits only while draft / revision_requested, and may withdraw; status
@@ -216,26 +226,26 @@ create policy reviews_insert on kgdj.reviews for insert to authenticated
   );
 create policy reviews_update_own on kgdj.reviews for update to authenticated using (reviewer_id = auth.uid()) with check (reviewer_id = auth.uid());
 create policy reviews_delete_own on kgdj.reviews for delete to authenticated using (reviewer_id = auth.uid() or kgdj.is_editor());
--- Reading raw rows: the reviewer, editors, and instructors of the target's
--- module. Everyone else (including the reviewed author) reads through
--- kgdj.reviews_visible, which nulls reviewer_id on blind reviews.
+-- Reviewers are ALWAYS identified (2026-09-04): a review is visible, with its
+-- reviewer, to everyone who can see its target.
 create policy reviews_read on kgdj.reviews for select to authenticated
-  using (reviewer_id = auth.uid() or kgdj.is_editor()
-         or (target_kind = 'proposal' and kgdj.is_module_instructor(kgdj.proposal_module(proposal_id)))
-         or (target_kind = 'subgraph' and kgdj.is_module_instructor(kgdj.subgraph_module(subgraph_id))));
-
-create or replace view kgdj.reviews_visible with (security_invoker = false) as
+  using (
+    reviewer_id = auth.uid() or (kgdj.is_editor() and target_kind <> 'subgraph')   -- decision 4: editors do not see portfolios unless they are the module's instructor
+    or (target_kind in ('node', 'edge') and kgdj.is_member())
+    or (target_kind = 'proposal' and kgdj.can_see_proposal(proposal_id))
+    or (target_kind = 'subgraph' and kgdj.can_see_subgraph(subgraph_id))
+  );
+-- Kept as a stable name for the frontend; adds reviewer status so a review by
+-- an erased (tombstoned) account is visibly not a credible one.
+create or replace view kgdj.reviews_visible with (security_invoker = true) as
 select r.id, r.target_kind, r.proposal_id, r.node_id, r.edge_id, r.subgraph_id, r.rating, r.commentary_md, r.week, r.created_at, r.updated_at,
-       case when r.is_blind and r.reviewer_id <> auth.uid() and not kgdj.is_editor() then null else r.reviewer_id end as reviewer_id,
-       r.is_blind
+       r.reviewer_id, p.username as reviewer_username, p.is_active as reviewer_active
 from kgdj.reviews r
-where kgdj.is_member() and (
-  r.target_kind in ('node', 'edge')
-  or (r.target_kind = 'proposal' and (kgdj.proposal_proposer(r.proposal_id) = auth.uid() or kgdj.can_see_proposal(r.proposal_id)))
-  or (r.target_kind = 'subgraph' and kgdj.can_see_subgraph(r.subgraph_id))
-);
+left join kgdj.profiles p on p.id = r.reviewer_id;
 grant select on kgdj.reviews_visible to authenticated;
-comment on view kgdj.reviews_visible is 'Reviews as members may see them: blind reviews carry no reviewer_id except to the reviewer and editors.';
+
+create policy review_flags_read on kgdj.review_flags for select to authenticated using (kgdj.is_member());
+create policy review_flags_write on kgdj.review_flags for all to authenticated using (kgdj.is_editor()) with check (kgdj.is_editor());
 
 -- Editors'' readiness view: how much review a target has attracted (decision 3: editors decide when it is enough)
 create or replace view kgdj.review_summary with (security_invoker = true) as
@@ -247,8 +257,11 @@ select target_kind, coalesce(proposal_id, node_id, edge_id, subgraph_id) as targ
        count(*) filter (where rating = 'reject') as reject,
        count(*) filter (where rating = 'strongly_reject') as strongly_reject,
        round(avg(case rating when 'strongly_reject' then -2 when 'reject' then -1 when 'neutral' then 0 when 'accept' then 1 else 2 end), 2) as mean_score,
-       max(created_at) as last_review_at
-from kgdj.reviews
+       count(*) filter (where p.is_active) as credible_reviews,        -- reviews by identifiable, non-erased reviewers
+       (count(*) filter (where p.is_active)) = 0 as all_reviewers_deleted,
+       max(r.created_at) as last_review_at
+from kgdj.reviews r
+left join kgdj.profiles p on p.id = r.reviewer_id
 group by target_kind, coalesce(proposal_id, node_id, edge_id, subgraph_id);
 grant select on kgdj.review_summary to authenticated;
 

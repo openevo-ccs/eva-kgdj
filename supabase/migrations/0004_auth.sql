@@ -93,13 +93,37 @@ create trigger kgdj_on_auth_user_created after insert on auth.users for each row
 -- decisions, canonical nodes/edges) stay, attributed to the tombstone profile
 -- shown as "deleted user". Free-text the person typed (rationales,
 -- commentary) is NOT scanned for self-identification — see docs/kgdj/02-gdpr-compliance.md.
-create or replace function kgdj.erase_profile(target uuid) returns void language plpgsql security definer set search_path = kgdj, public, extensions, pg_temp as $$
-declare tomb text := 'deleted-' || left(target::text, 8); em text;
+-- redact_text (GDPR strategy for free text, 2026-09-04): the person may ask,
+-- on erasure, that the free text they wrote — review commentary and proposal
+-- rationales — be replaced by a withdrawal notice, since it can contain
+-- self-identifying content no automated scrub can find. Ratings and the
+-- existence of the review remain (they carry no personal data), but a review
+-- from a tombstoned account no longer counts as credible (review_summary).
+create or replace function kgdj.erase_profile(target uuid, redact_text boolean default false) returns void language plpgsql security definer set search_path = kgdj, public, extensions, pg_temp as $$
+declare tomb text := 'deleted-' || left(target::text, 8); em text; f record;
 begin
   if not kgdj.is_admin() and auth.uid() <> target then
     raise exception 'Only the person themselves or an admin may erase a profile';
   end if;
   select email into em from auth.users where id = target;
+  -- reviewer-integrity flags: every target this person reviewed that would be
+  -- left with NO active (non-erased) reviewer once they are tombstoned
+  for f in
+    select distinct r.target_kind, coalesce(r.proposal_id, r.node_id, r.edge_id) as target_id
+    from kgdj.reviews r where r.reviewer_id = target and r.subgraph_id is null
+  loop
+    if not exists (
+      select 1 from kgdj.reviews r2 join kgdj.profiles p2 on p2.id = r2.reviewer_id
+      where coalesce(r2.proposal_id, r2.node_id, r2.edge_id) = f.target_id and r2.reviewer_id <> target and p2.is_active
+    ) then
+      insert into kgdj.review_flags (target_kind, target_id, reason, note)
+      values (f.target_kind, f.target_id, 'all_reviewers_deleted', 'Raised automatically on erasure of the only credible reviewer(s); needs a fresh identified review before (re)promotion.');
+    end if;
+  end loop;
+  if redact_text then
+    update kgdj.reviews set commentary_md = '_[commentary withdrawn at the author''s request on account erasure]_' where reviewer_id = target;
+    update kgdj.proposed_changes set rationale = '[rationale withdrawn at the author''s request on account erasure]' where proposer_id = target;
+  end if;
   delete from kgdj.student_subgraphs where owner_id = target;          -- cascades nodes/private nodes/links/shares/reviews of the portfolio
   delete from kgdj.subgraph_shares where profile_id = target;
   delete from kgdj.consent_records where profile_id = target;
@@ -116,5 +140,5 @@ begin
   delete from auth.users where id = target;                            -- the email itself; no FK from profiles, so the tombstone survives
   insert into kgdj.audit_log (actor_id, action, table_name, row_id) values (auth.uid(), 'erase', 'profiles', target::text);
 end $$;
-revoke execute on function kgdj.erase_profile(uuid) from public, anon;
-grant execute on function kgdj.erase_profile(uuid) to authenticated;
+revoke execute on function kgdj.erase_profile(uuid, boolean) from public, anon;
+grant execute on function kgdj.erase_profile(uuid, boolean) to authenticated;

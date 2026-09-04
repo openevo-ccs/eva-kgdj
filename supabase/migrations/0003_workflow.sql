@@ -36,17 +36,16 @@ create trigger proposal_submission_gate before insert or update on kgdj.proposed
 -- security definer: the pending -> under_review transition below is a write
 -- the reviewer's own RLS would not allow (they are not the proposer/editor).
 create or replace function kgdj.check_review_coi() returns trigger language plpgsql security definer set search_path = kgdj, public, extensions, pg_temp as $$
-declare proposer uuid; st kgdj.proposal_status; blind boolean; author uuid;
+declare proposer uuid; st kgdj.proposal_status; author uuid;
 begin
   if new.target_kind = 'proposal' then
-    select proposer_id, status, blind_review into proposer, st, blind from kgdj.proposed_changes where id = new.proposal_id;
+    select proposer_id, status into proposer, st from kgdj.proposed_changes where id = new.proposal_id;
     if proposer = new.reviewer_id then
       raise exception 'Conflict of interest: a proposer cannot review their own proposal';
     end if;
     if st not in ('pending', 'under_review') then
       raise exception 'Proposal is not open for review (status %)', st;
     end if;
-    new.is_blind := coalesce(blind, true);   -- decision 2: blindness is the submitter's per-submission choice
     update kgdj.proposed_changes set status = 'under_review' where id = new.proposal_id and status = 'pending';
   elsif new.target_kind = 'node' then
     select created_by into author from kgdj.nodes where id = new.node_id;
@@ -62,6 +61,28 @@ begin
 end $$;
 
 create trigger review_coi before insert on kgdj.reviews for each row execute function kgdj.check_review_coi();
+
+-- The submitter may switch their anonymity on or off at ANY time, whatever
+-- the proposal's status (the ordinary update policy only allows edits while
+-- draft / revision_requested).
+create or replace function kgdj.set_submission_anonymity(pid uuid, anonymous boolean) returns void language plpgsql security definer set search_path = kgdj, public, extensions, pg_temp as $$
+begin
+  if not exists (select 1 from kgdj.proposed_changes where id = pid and proposer_id = auth.uid()) then
+    raise exception 'Only the submitter can change the anonymity of a submission';
+  end if;
+  update kgdj.proposed_changes set submitter_anonymous = anonymous where id = pid;
+end $$;
+revoke execute on function kgdj.set_submission_anonymity(uuid, boolean) from public, anon;
+grant execute on function kgdj.set_submission_anonymity(uuid, boolean) to authenticated;
+
+-- Editors resolve a reviewer-integrity flag once a credible reviewer has looked again.
+create or replace function kgdj.resolve_review_flag(flag uuid, note_text text default null) returns void language plpgsql security definer set search_path = kgdj, public, extensions, pg_temp as $$
+begin
+  if not kgdj.is_editor() then raise exception 'Only editors resolve review flags'; end if;
+  update kgdj.review_flags set resolved_at = now(), resolved_by = auth.uid(), note = coalesce(note_text, note) where id = flag and resolved_at is null;
+end $$;
+revoke execute on function kgdj.resolve_review_flag(uuid, text) from public, anon;
+grant execute on function kgdj.resolve_review_flag(uuid, text) to authenticated;
 
 -- ---------------------------------------------------------------- approval: proposed_change -> canonical graph
 -- Runs as SECURITY DEFINER so it can write kgdj.nodes/edges, which have no
@@ -226,7 +247,7 @@ do $$
 declare t text;
 begin
   foreach t in array array['nodes', 'edges', 'node_citations', 'edge_citations', 'proposed_changes', 'reviews', 'editorial_decisions',
-                           'profiles', 'allowlist', 'consent_records', 'student_subgraphs', 'subgraph_shares']
+                           'profiles', 'allowlist', 'consent_records', 'student_subgraphs', 'subgraph_shares', 'review_flags']
   loop
     execute format('create trigger %I_audit after insert or update or delete on kgdj.%I for each row execute function kgdj.audit_row()', t, t);
   end loop;
