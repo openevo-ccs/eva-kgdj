@@ -85,16 +85,36 @@ end $$;
 drop trigger if exists kgdj_on_auth_user_created on auth.users;
 create trigger kgdj_on_auth_user_created after insert on auth.users for each row execute function kgdj.handle_new_user();
 
--- Erasure helper (GDPR Art. 17): anonymise a profile's personal fields and
--- detach ownership; canonical contributions stay (attributed to "deleted user")
--- because the journal record is the institute's, portfolios are deleted.
+-- Erasure (GDPR Art. 17; decision 5, 2026-09-04): self-service at any time.
+-- Removes every representation of the person's email and username from the
+-- system — the auth account (email), the profile's identifying fields, the
+-- invite row, share rows, consent rows, and the username/name snapshots inside
+-- audit_log — and deletes their portfolios. Contributions (proposals, reviews,
+-- decisions, canonical nodes/edges) stay, attributed to the tombstone profile
+-- shown as "deleted user". Free-text the person typed (rationales,
+-- commentary) is NOT scanned for self-identification — see docs/kgdj/02-gdpr-compliance.md.
 create or replace function kgdj.erase_profile(target uuid) returns void language plpgsql security definer set search_path = kgdj, public, extensions, pg_temp as $$
+declare tomb text := 'deleted-' || left(target::text, 8); em text;
 begin
   if not kgdj.is_admin() and auth.uid() <> target then
     raise exception 'Only the person themselves or an admin may erase a profile';
   end if;
-  delete from kgdj.student_subgraphs where owner_id = target;
+  select email into em from auth.users where id = target;
+  delete from kgdj.student_subgraphs where owner_id = target;          -- cascades nodes/private nodes/links/shares/reviews of the portfolio
+  delete from kgdj.subgraph_shares where profile_id = target;
   delete from kgdj.consent_records where profile_id = target;
-  update kgdj.profiles set username = 'deleted-' || left(target::text, 8), full_name = null, avatar_url = null, is_active = false, department_id = null where id = target;
+  delete from kgdj.module_members where profile_id = target;
+  if em is not null then delete from kgdj.allowlist where email = em::citext; end if;
+  update kgdj.profiles set username = tomb, full_name = null, avatar_url = null, is_active = false, department_id = null, institution = 'external' where id = target;
+  -- scrub identifying fields from audit snapshots of this profile (keep the fact that rows changed)
+  update kgdj.audit_log set
+    before_row = case when before_row is null then null else before_row - 'username' - 'full_name' - 'avatar_url' || jsonb_build_object('username', tomb) end,
+    after_row  = case when after_row  is null then null else after_row  - 'username' - 'full_name' - 'avatar_url' || jsonb_build_object('username', tomb) end
+  where table_name = 'profiles' and row_id = target::text;
+  update kgdj.audit_log set after_row = after_row - 'email' || jsonb_build_object('email', 'erased') where table_name = 'allowlist' and after_row ->> 'email' = em;
+  update kgdj.audit_log set before_row = before_row - 'email' || jsonb_build_object('email', 'erased') where table_name = 'allowlist' and before_row ->> 'email' = em;
+  delete from auth.users where id = target;                            -- the email itself; no FK from profiles, so the tombstone survives
   insert into kgdj.audit_log (actor_id, action, table_name, row_id) values (auth.uid(), 'erase', 'profiles', target::text);
 end $$;
+revoke execute on function kgdj.erase_profile(uuid) from public, anon;
+grant execute on function kgdj.erase_profile(uuid) to authenticated;

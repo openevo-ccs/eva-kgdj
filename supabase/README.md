@@ -90,18 +90,22 @@ the row's own columns (INSERT … RETURNING), cross-table checks inside policies
 security-definer helpers (recursion), and workflow triggers that write to other tables must be
 security-definer.
 
-## Open questions (decide before the pilot)
+## Decisions applied 2026-09-04 (after Dustin's review of Phase 2)
 
-1. **Seed visibility.** Signed-off rule: "proposed → author, reviewers, editors, instructor". Implemented
-   literally for **submissions** (`proposed_changes`). The 306 imported nodes with `status = 'proposed'`
-   are visible to **all members** here, because they *are* the review queue the pilot exists for. Confirm.
-2. **Blind review.** `peer_reviews.is_blind` defaults to `true`; proposers see reviews through
-   `proposal_reviews_for_author`, which nulls the reviewer. Editors and instructors always see who
-   reviewed. Should students be able to opt out of blindness, or should blindness be per-module?
-3. **Who may peer-review a proposal?** Currently any member who can see it: same-module members (once
-   pending/under_review), editors, instructors. Should researchers outside the module see student
-   proposals too?
-4. **Editors and portfolios.** Editors do *not* automatically see student subgraphs (only owner, shares,
-   instructor, and `module`/`members` visibility). Keep?
-5. **Erasure policy.** `erase_profile()` deletes portfolios and anonymises the profile but keeps approved
-   canonical contributions attributed to a "deleted user" placeholder. Is that the institute's position?
+1. **Seed visibility** — the 306 imported `proposed` nodes are visible to all members (they are the review queue). Confirmed.
+2. **Blind review is a per-submission option** — `proposed_changes.blind_review` (default true) is set by whoever submits; every review of that
+   proposal inherits it (`check_review_coi()`), and `reviews_visible` nulls `reviewer_id` for blind reviews except to the reviewer, editors and
+   the module's instructors. Node/edge/subgraph reviews are non-blind unless the reviewer sets `is_blind`.
+3. **Anyone may review any proposal, node, edge or subgraph** they can see (never their own) — one polymorphic `reviews` table: markdown
+   `commentary_md` of any length plus `rating` ∈ strongly_reject · reject · neutral · accept · strongly_accept, as suggestions to the editors.
+   `review_summary` gives editors the count/mean per target; `editorial_decisions` may now target a node or edge directly
+   (`promote` proposed→canonical, `archive`) when the editor judges the review sufficient. Sub-cluster promotion = several decisions (UI batches them).
+   Drafts stay the proposer's; every other proposal status is visible to all members.
+4. **Instructors are assigned by an admin** (`modules.instructor_id` or `module_members.member_role = 'instructor'`); only they — not editors —
+   see student portfolios and portfolio critiques for that module.
+5. **Erasure on request, any time** — `erase_profile()` deletes the auth account (email), anonymises the profile to `deleted-xxxxxxxx`, removes
+   invite/share/consent/module rows, scrubs username/email from audit snapshots, and deletes portfolios; proposals, reviews, decisions and
+   canonical contributions remain attributed to the tombstone ("deleted user"). GDPR analysis in `docs/kgdj/02-gdpr-compliance.md` (Phase 4).
+   `profiles.id` therefore has **no foreign key** to `auth.users`.
+
+Still open: whether free text a person wrote (rationales, commentary) should be scanned/redacted on erasure — currently not.

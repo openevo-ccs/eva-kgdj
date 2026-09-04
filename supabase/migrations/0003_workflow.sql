@@ -36,21 +36,32 @@ create trigger proposal_submission_gate before insert or update on kgdj.proposed
 -- security definer: the pending -> under_review transition below is a write
 -- the reviewer's own RLS would not allow (they are not the proposer/editor).
 create or replace function kgdj.check_review_coi() returns trigger language plpgsql security definer set search_path = kgdj, public, extensions, pg_temp as $$
-declare proposer uuid; st kgdj.proposal_status;
+declare proposer uuid; st kgdj.proposal_status; blind boolean; author uuid;
 begin
-  select proposer_id, status into proposer, st from kgdj.proposed_changes where id = new.proposal_id;
-  if proposer = new.reviewer_id then
-    raise exception 'Conflict of interest: a proposer cannot review their own proposal';
+  if new.target_kind = 'proposal' then
+    select proposer_id, status, blind_review into proposer, st, blind from kgdj.proposed_changes where id = new.proposal_id;
+    if proposer = new.reviewer_id then
+      raise exception 'Conflict of interest: a proposer cannot review their own proposal';
+    end if;
+    if st not in ('pending', 'under_review') then
+      raise exception 'Proposal is not open for review (status %)', st;
+    end if;
+    new.is_blind := coalesce(blind, true);   -- decision 2: blindness is the submitter's per-submission choice
+    update kgdj.proposed_changes set status = 'under_review' where id = new.proposal_id and status = 'pending';
+  elsif new.target_kind = 'node' then
+    select created_by into author from kgdj.nodes where id = new.node_id;
+    if author = new.reviewer_id then raise exception 'Conflict of interest: you authored this node'; end if;
+  elsif new.target_kind = 'edge' then
+    select created_by into author from kgdj.edges where id = new.edge_id;
+    if author = new.reviewer_id then raise exception 'Conflict of interest: you authored this edge'; end if;
+  elsif new.target_kind = 'subgraph' then
+    select owner_id into author from kgdj.student_subgraphs where id = new.subgraph_id;
+    if author = new.reviewer_id then raise exception 'Conflict of interest: you own this portfolio'; end if;
   end if;
-  if st not in ('pending', 'under_review') then
-    raise exception 'Proposal is not open for review (status %)', st;
-  end if;
-  -- first review moves the proposal to under_review
-  update kgdj.proposed_changes set status = 'under_review' where id = new.proposal_id and status = 'pending';
   return new;
 end $$;
 
-create trigger review_coi before insert on kgdj.peer_reviews for each row execute function kgdj.check_review_coi();
+create trigger review_coi before insert on kgdj.reviews for each row execute function kgdj.check_review_coi();
 
 -- ---------------------------------------------------------------- approval: proposed_change -> canonical graph
 -- Runs as SECURITY DEFINER so it can write kgdj.nodes/edges, which have no
@@ -65,6 +76,33 @@ declare
   dept    uuid;
   cit     record;
 begin
+  -- Direct decisions on existing records (decision 3): promote proposed -> canonical, or archive.
+  if new.proposal_id is null then
+    if new.node_id is not null then
+      if new.decision = 'promote' then
+        update kgdj.nodes set status = 'canonical', canonical_since = coalesce(canonical_since, now()), version = version + 1, updated_by = new.editor_id,
+          provenance = provenance || jsonb_build_object('status', 'canonical', 'approved_by', new.editor_id, 'approved_at', now(), 'assigned_by', 'editorial-review', 'decision_id', new.id)
+        where id = new.node_id and status <> 'archived';
+      else
+        update kgdj.nodes set status = 'archived', version = version + 1, updated_by = new.editor_id,
+          provenance = provenance || jsonb_build_object('archived_by', new.editor_id, 'archived_at', now(), 'decision_id', new.id) where id = new.node_id;
+        update kgdj.edges set status = 'archived', updated_by = new.editor_id where (source_node_id = new.node_id or target_node_id = new.node_id) and status <> 'archived';
+      end if;
+    elsif new.edge_id is not null then
+      if new.decision = 'promote' then
+        update kgdj.edges set status = 'canonical', canonical_since = coalesce(canonical_since, now()), version = version + 1, updated_by = new.editor_id,
+          provenance = provenance || jsonb_build_object('status', 'canonical', 'approved_by', new.editor_id, 'approved_at', now(), 'assigned_by', 'editorial-review', 'decision_id', new.id)
+        where id = new.edge_id and status <> 'archived';
+      else
+        update kgdj.edges set status = 'archived', version = version + 1, updated_by = new.editor_id,
+          provenance = provenance || jsonb_build_object('archived_by', new.editor_id, 'archived_at', now(), 'decision_id', new.id) where id = new.edge_id;
+      end if;
+    end if;
+    insert into kgdj.audit_log (actor_id, action, table_name, row_id, after_row)
+    values (new.editor_id, new.decision::text, coalesce(case when new.node_id is not null then 'nodes' end, 'edges'), coalesce(new.node_id, new.edge_id)::text, jsonb_build_object('decision_id', new.id));
+    return new;
+  end if;
+
   select * into pc from kgdj.proposed_changes where id = new.proposal_id for update;
   if not found then raise exception 'Proposal % not found', new.proposal_id; end if;
   if pc.status not in ('pending', 'under_review', 'revision_requested') then
@@ -187,7 +225,7 @@ $$;
 do $$
 declare t text;
 begin
-  foreach t in array array['nodes', 'edges', 'node_citations', 'edge_citations', 'proposed_changes', 'peer_reviews', 'editorial_decisions',
+  foreach t in array array['nodes', 'edges', 'node_citations', 'edge_citations', 'proposed_changes', 'reviews', 'editorial_decisions',
                            'profiles', 'allowlist', 'consent_records', 'student_subgraphs', 'subgraph_shares']
   loop
     execute format('create trigger %I_audit after insert or update or delete on kgdj.%I for each row execute function kgdj.audit_row()', t, t);

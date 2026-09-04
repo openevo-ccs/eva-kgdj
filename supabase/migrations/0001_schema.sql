@@ -24,8 +24,9 @@ create type kgdj.institution as enum ('mpi-eva', 'uni-leipzig', 'external');
 create type kgdj.record_status as enum ('proposed', 'canonical', 'archived');
 create type kgdj.change_type as enum ('add_node', 'edit_node', 'archive_node', 'add_edge', 'edit_edge', 'delete_edge');
 create type kgdj.proposal_status as enum ('draft', 'pending', 'under_review', 'revision_requested', 'approved', 'rejected', 'withdrawn');
-create type kgdj.review_recommendation as enum ('accept', 'revise', 'reject');
-create type kgdj.decision as enum ('approve', 'reject', 'request_revision');
+create type kgdj.review_rating as enum ('strongly_reject', 'reject', 'neutral', 'accept', 'strongly_accept');
+create type kgdj.review_target as enum ('proposal', 'node', 'edge', 'subgraph');
+create type kgdj.decision as enum ('approve', 'reject', 'request_revision', 'promote', 'archive');
 create type kgdj.subgraph_visibility as enum ('private', 'shared', 'module', 'members');
 create type kgdj.consent_purpose as enum ('portfolio_processing', 'peer_review_visibility', 'leaderboard_display', 'canonical_attribution');
 create type kgdj.private_node_type as enum ('self', 'question', 'resource', 'theory', 'method');
@@ -59,7 +60,7 @@ create table kgdj.relationship_types (
 
 -- ---------------------------------------------------------------- identity
 create table kgdj.profiles (
-  id             uuid primary key references auth.users (id) on delete cascade,
+  id             uuid primary key,                    -- = auth.users.id; deliberately NO foreign key: erasure deletes the auth row (email) and keeps this row as a tombstone (README, decision 5)
   username       citext not null unique check (length(username) between 3 and 40 and username ~ '^[a-z0-9._-]+$'),
   full_name      text,                                -- optional; students may leave it empty (data minimisation)
   role           kgdj.user_role not null default 'msc_student',
@@ -208,6 +209,7 @@ create table kgdj.proposed_changes (
   target_edge_id  uuid references kgdj.edges (id) on delete cascade,
   payload         jsonb not null default '{}'::jsonb,   -- fields to create/overwrite; see README for the per-type contract
   rationale       text not null default '',
+  blind_review    boolean not null default true,        -- decision 2: the submitter chooses, per submission, whether reviewer identities are hidden from them
   module_id       uuid references kgdj.modules (id) on delete set null,  -- course context, if submitted as coursework
   status          kgdj.proposal_status not null default 'draft',
   submitted_at    timestamptz,
@@ -233,26 +235,53 @@ create table kgdj.proposal_citations (
   primary key (proposal_id, citation_id)
 );
 
-create table kgdj.peer_reviews (
-  id              uuid primary key default gen_random_uuid(),
-  proposal_id     uuid not null references kgdj.proposed_changes (id) on delete cascade,
-  reviewer_id     uuid not null references kgdj.profiles (id) on delete cascade,
-  rating          smallint check (rating between 1 and 5),
-  recommendation  kgdj.review_recommendation not null,
-  critique_text   text not null check (length(critique_text) >= 20),
-  is_blind        boolean not null default true,      -- reviewer identity hidden from the proposer (see README: open pedagogical question)
-  created_at      timestamptz not null default now(),
-  updated_at      timestamptz not null default now(),
-  unique (proposal_id, reviewer_id)
+-- Decision 3 (2026-09-04): anyone may review any proposal, node, edge or
+-- subgraph. A review = markdown commentary (any length) + a five-level rating,
+-- as a SUGGESTION to the editors, who decide when enough review has happened.
+create table kgdj.reviews (
+  id            uuid primary key default gen_random_uuid(),
+  target_kind   kgdj.review_target not null,
+  proposal_id   uuid references kgdj.proposed_changes (id) on delete cascade,
+  node_id       uuid references kgdj.nodes (id) on delete cascade,
+  edge_id       uuid references kgdj.edges (id) on delete cascade,
+  subgraph_id   uuid,                              -- fk added after student_subgraphs exists
+  reviewer_id   uuid not null references kgdj.profiles (id) on delete cascade,
+  rating        kgdj.review_rating not null,
+  commentary_md text not null check (length(commentary_md) >= 1),   -- markdown; rendered sanitised in the UI
+  is_blind      boolean not null default true,    -- copied from the proposal's blind_review at insert (trigger); false for node/edge/subgraph reviews unless set
+  week          int check (week between 1 and 15),  -- module week, for portfolio critiques
+  created_at    timestamptz not null default now(),
+  updated_at    timestamptz not null default now(),
+  constraint review_target_one check (
+    (target_kind = 'proposal' and proposal_id is not null and node_id is null and edge_id is null and subgraph_id is null) or
+    (target_kind = 'node'     and node_id is not null and proposal_id is null and edge_id is null and subgraph_id is null) or
+    (target_kind = 'edge'     and edge_id is not null and proposal_id is null and node_id is null and subgraph_id is null) or
+    (target_kind = 'subgraph' and subgraph_id is not null and proposal_id is null and node_id is null and edge_id is null)
+  )
 );
+create unique index reviews_one_per_reviewer_proposal on kgdj.reviews (proposal_id, reviewer_id) where proposal_id is not null;
+create unique index reviews_one_per_reviewer_node     on kgdj.reviews (node_id, reviewer_id)     where node_id is not null;
+create unique index reviews_one_per_reviewer_edge     on kgdj.reviews (edge_id, reviewer_id)     where edge_id is not null;
+create index reviews_subgraph_idx on kgdj.reviews (subgraph_id) where subgraph_id is not null;
+create index reviews_reviewer_idx on kgdj.reviews (reviewer_id);
 
+-- A decision is about a proposal (approve / reject / request_revision) OR
+-- about an existing node/edge directly (promote proposed -> canonical, archive)
+-- once the editor judges the reviews sufficient (decision 3).
 create table kgdj.editorial_decisions (
   id           uuid primary key default gen_random_uuid(),
-  proposal_id  uuid not null references kgdj.proposed_changes (id) on delete cascade,
+  proposal_id  uuid references kgdj.proposed_changes (id) on delete cascade,
+  node_id      uuid references kgdj.nodes (id) on delete cascade,
+  edge_id      uuid references kgdj.edges (id) on delete cascade,
   editor_id    uuid not null references kgdj.profiles (id) on delete set null,
   decision     kgdj.decision not null,
   feedback     text not null default '',
-  decided_at   timestamptz not null default now()
+  decided_at   timestamptz not null default now(),
+  constraint decision_target check (
+    (proposal_id is not null and node_id is null and edge_id is null and decision in ('approve', 'reject', 'request_revision')) or
+    (node_id is not null and proposal_id is null and edge_id is null and decision in ('promote', 'archive')) or
+    (edge_id is not null and proposal_id is null and node_id is null and decision in ('promote', 'archive'))
+  )
 );
 create index decisions_proposal_idx on kgdj.editorial_decisions (proposal_id);
 
@@ -268,6 +297,7 @@ create table kgdj.student_subgraphs (
   created_at             timestamptz not null default now(),
   updated_at             timestamptz not null default now()
 );
+alter table kgdj.reviews add constraint reviews_subgraph_fk foreign key (subgraph_id) references kgdj.student_subgraphs (id) on delete cascade;
 create index subgraphs_owner_idx on kgdj.student_subgraphs (owner_id);
 create index subgraphs_module_idx on kgdj.student_subgraphs (module_id);
 
@@ -323,15 +353,7 @@ create table kgdj.subgraph_shares (
   primary key (subgraph_id, profile_id)
 );
 
--- classmate critique of a portfolio (the personal-graph merge_log.critique, made first-class)
-create table kgdj.subgraph_reviews (
-  id           uuid primary key default gen_random_uuid(),
-  subgraph_id  uuid not null references kgdj.student_subgraphs (id) on delete cascade,
-  reviewer_id  uuid not null references kgdj.profiles (id) on delete cascade,
-  week         int check (week between 1 and 15),
-  critique     text not null check (length(critique) between 5 and 2000),
-  created_at   timestamptz not null default now()
-);
+-- (portfolio critiques live in kgdj.reviews with target_kind = 'subgraph')
 
 -- ---------------------------------------------------------------- accountability
 create table kgdj.audit_log (
@@ -367,7 +389,7 @@ end $$;
 do $$
 declare t text;
 begin
-  foreach t in array array['profiles', 'citations', 'nodes', 'edges', 'proposed_changes', 'peer_reviews', 'student_subgraphs']
+  foreach t in array array['profiles', 'citations', 'nodes', 'edges', 'proposed_changes', 'reviews', 'student_subgraphs']
   loop
     execute format('create trigger %I_touch before update on kgdj.%I for each row execute function kgdj.touch_updated_at()', t, t);
   end loop;
@@ -395,8 +417,8 @@ create or replace view kgdj.leaderboard as
 select p.id as profile_id, p.username, p.role, d.abbr as department,
        (select count(*) from kgdj.proposed_changes pc where pc.proposer_id = p.id and pc.status = 'approved') as approved_proposals,
        (select count(*) from kgdj.proposed_changes pc where pc.proposer_id = p.id and pc.status in ('pending', 'under_review', 'revision_requested')) as open_proposals,
-       (select count(*) from kgdj.peer_reviews r where r.reviewer_id = p.id) as reviews_written,
-       (select count(*) from kgdj.subgraph_reviews r where r.reviewer_id = p.id) as portfolio_critiques,
+       (select count(*) from kgdj.reviews r where r.reviewer_id = p.id and r.target_kind <> 'subgraph') as reviews_written,
+       (select count(*) from kgdj.reviews r where r.reviewer_id = p.id and r.target_kind = 'subgraph') as portfolio_critiques,
        (select count(*) from kgdj.nodes n where n.created_by = p.id and n.status = 'canonical') as canonical_nodes_authored
 from kgdj.profiles p
 left join kgdj.departments d on d.id = p.department_id
