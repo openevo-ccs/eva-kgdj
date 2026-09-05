@@ -1,4 +1,4 @@
-// Mirrors apps/kgdj/supabase/migrations/0001_schema.sql. Keep in sync by hand
+// Mirrors apps/kgdj/supabase/migrations/*.sql. Keep in sync by hand
 // (no codegen in the MVP); the names are the column names.
 export type Role = "researcher" | "msc_student" | "editor" | "admin";
 export type Institution = "mpi-eva" | "uni-leipzig" | "external";
@@ -11,11 +11,16 @@ export type Decision = "approve" | "reject" | "request_revision" | "promote" | "
 export type Visibility = "private" | "shared" | "module" | "members";
 export type ConsentPurpose = "portfolio_processing" | "peer_review_visibility" | "leaderboard_display" | "canonical_attribution";
 export type PrivateNodeType = "self" | "question" | "resource" | "theory" | "method";
+export type ModuleMemberRole = "student" | "instructor" | "assistant" | "affiliate";
 
 export interface Provenance { source?: string; status?: string; verification?: string[]; assigned_by?: string; retrieved?: string; approved_at?: string; approved_by?: string; [k: string]: unknown }
 
 export interface Department { id: string; code: string; name: string; abbr: string; color_hex: string | null; pure_ou_id?: string | null }
-export interface Profile { id: string; username: string; full_name: string | null; role: Role; institution: Institution; department_id: string | null; is_active: boolean }
+export interface ResearchGroup { id: string; pure_ou_id: string | null; name: string; kind: "department" | "historical-department" | "group" | "other"; department_code: string | null; status: string; parent_name: string | null }
+export interface Profile {
+  id: string; username: string; full_name: string | null; role: Role; institution: Institution; department_id: string | null; is_active: boolean;
+  research_group_id?: string | null; affiliation_note?: string | null;
+}
 export interface Module { id: string; code: string; name: string; cohort_year: number; term: string; instructor_id: string | null }
 
 export interface GraphNode {
@@ -39,6 +44,7 @@ export interface Proposal {
 export interface Review {
   id: string; target_kind: ReviewTarget; proposal_id: string | null; node_id: string | null; edge_id: string | null; subgraph_id: string | null;
   reviewer_id: string; reviewer_username: string | null; reviewer_active: boolean; rating: Rating; commentary_md: string; week: number | null; created_at: string;
+  helpful_count?: number; helpful_by_me?: boolean;
 }
 export interface ReviewSummary { target_kind: ReviewTarget; target_id: string; n_reviews: number; strongly_accept: number; accept: number; neutral: number; reject: number; strongly_reject: number; mean_score: number | null; credible_reviews: number; all_reviewers_deleted: boolean; last_review_at: string | null }
 export interface ReviewFlag { id: string; target_kind: ReviewTarget; target_id: string; reason: string; raised_at: string; resolved_at: string | null; note: string | null }
@@ -47,13 +53,36 @@ export interface EditorialDecision { id: string; proposal_id: string | null; nod
 export interface Subgraph { id: string; owner_id: string; module_id: string | null; title: string; description: string; visibility: Visibility; last_checkpoint_week: number | null; created_at: string }
 export interface SubgraphNode { subgraph_id: string; node_id: string; custom_annotation: string; pos_x: number | null; pos_y: number | null; added_week: number | null }
 export interface PrivateNode { id: string; subgraph_id: string; node_type: PrivateNodeType; label: string; source: string | null; origin: string | null; created_week: number | null; pos_x: number | null; pos_y: number | null }
-export interface SubgraphLink { id: string; subgraph_id: string; from_node_id: string | null; from_private_id: string | null; to_node_id: string | null; to_private_id: string | null; why: string; lens: string | null; created_week: number | null }
-export interface LeaderboardRow { profile_id: string; username: string; role: Role; department: string | null; approved_proposals: number; open_proposals: number; reviews_written: number; portfolio_critiques: number; canonical_nodes_authored: number }
+export interface SubgraphLink { id: string; subgraph_id: string; from_node_id: string | null; from_private_id: string | null; to_node_id: string | null; to_private_id: string | null; why: string; lens: string | null; created_week: number | null; edge_id?: string | null }
+export interface SubgraphDetail { subgraph: Subgraph; nodes: SubgraphNode[]; privateNodes: PrivateNode[]; links: SubgraphLink[]; reviews: Review[] }
+
+// One row per opted-in member; the Leaderboard page derives a separate top list per measure.
+export interface LeaderboardRow {
+  profile_id: string; username: string; role: Role; department: string | null;
+  approved_proposals: number; open_proposals: number; canonical_nodes_authored: number; citations_brought: number;
+  reviews_written: number; portfolio_critiques: number; helpful_votes_received: number; reviews_upheld: number; substantive_reviews: number;
+  annotated_nodes: number; annotation_chars: number; connections_written: number; cross_dept_connections: number; lenses_used: number;
+  questions_raised: number; resources_added: number; active_weeks: number;
+}
+
+// Same keys as kgdj.portfolio_metrics() in 0005_ux.sql; computed client-side for the reader's own portfolio (lib/report.ts).
+export type MetricKey = "canonical_nodes" | "annotated_nodes" | "avg_annotation_len" | "own_nodes" | "questions" | "resources" | "theories" | "methods"
+  | "connections" | "avg_why_len" | "lenses" | "adopted_edges" | "cross_dept_connections" | "departments_covered" | "node_types_covered" | "weeks_active" | "critiques_received";
+export type PortfolioMetrics = Record<MetricKey, number>;
+export interface CohortStats { scope: "module" | "program" | "members"; n: number; metrics: Record<string, { mean: number; median: number; p75: number; max: number }> | null; reason?: string }
 
 export interface Session { userId: string; email: string | null }
 export interface NodeDetail { node: GraphNode; citations: Citation[]; reviews: Review[]; summary: ReviewSummary | null; proposals: Proposal[]; edges: GraphEdge[]; flags: ReviewFlag[] }
+export interface EdgeDetail { edge: GraphEdge; source: GraphNode | null; target: GraphNode | null; reviews: Review[]; summary: ReviewSummary | null; citations: Citation[] }
 export interface ProposalDetail { proposal: Proposal; citations: Citation[]; reviews: Review[]; summary: ReviewSummary | null; decisions: EditorialDecision[]; targetNode: GraphNode | null; proposerUsername: string | null }
 
 export const RATING_LABEL: Record<Rating, string> = { strongly_reject: "Strongly reject", reject: "Reject", neutral: "Neutral", accept: "Accept", strongly_accept: "Strongly accept" };
 export const RATINGS: Rating[] = ["strongly_reject", "reject", "neutral", "accept", "strongly_accept"];
 export const CHANGE_LABEL: Record<ChangeType, string> = { add_node: "Add node", edit_node: "Edit node", archive_node: "Archive node", add_edge: "Add edge", edit_edge: "Edit edge", delete_edge: "Delete edge" };
+export const PRIVATE_TYPE_HELP: Record<PrivateNodeType, string> = {
+  self: "You: your interests, background, or a stance you hold. Usually one per portfolio.",
+  question: "A question you genuinely have. Connect it to the canonical nodes it grows out of.",
+  resource: "A paper, dataset, talk or site you found (give the source). Not yet in the canonical graph.",
+  theory: "A theoretical idea you are working with that the canonical graph lacks.",
+  method: "A method or measure you want to learn or used.",
+};

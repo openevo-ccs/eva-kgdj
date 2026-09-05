@@ -210,6 +210,73 @@ def main():
     assert admin.one("select count(*) from kgdj.reviews where reviewer_id=%s", (U["bob"],)) >= 2, "review records kept, attributed to the tombstone"
     assert admin.one("select count(*) from kgdj.audit_log where table_name='profiles' and row_id=%s and (before_row->>'username' = 'bob' or after_row->>'username' = 'bob')", (U["bob"],)) == 0, "audit snapshots scrubbed"
     print("consent, leaderboard, erasure ok")
+
+    # --- 0005: research groups, self-affiliation, adopted edges, helpful votes, extended leaderboard, cohort stats ---
+    assert alice.one("select count(*) from kgdj.research_groups") == 70, "PuRe OU tree seed"
+    anon.expect_error("select count(*) from kgdj.research_groups", contains="permission denied")
+    ccp_rg = alice.one("select id from kgdj.research_groups where pure_ou_id = 'ou_3040267'")
+    alice.expect_error("insert into kgdj.research_groups (name, kind) values ('x','group')", contains="row-level security")
+    eve.q("insert into kgdj.research_groups (name, kind) values ('New Junior Group','group')")  # editors may add missing ones
+    # self-declared affiliation: alice sets her own department/group/note; cannot touch someone else's
+    alice.q("update kgdj.profiles set research_group_id = %s, affiliation_note = 'MSc, Uni-Leipzig' where id = %s", (ccp_rg, U["alice"]))
+    assert admin.one("select affiliation_note from kgdj.profiles where id=%s", (U["alice"],)) == "MSc, Uni-Leipzig"
+    alice.q("update kgdj.profiles set affiliation_note = 'poke' where id = %s", (U["carla"],))  # RLS: no rows updated, no error
+    assert admin.one("select affiliation_note from kgdj.profiles where id=%s", (U["carla"],)) != "poke", "cannot edit another profile"
+    print("research groups + self-declared affiliation ok")
+
+    # module self-affiliation: a plain researcher (mallory — not editor/admin, not this module's instructor)
+    # cannot self-join as instructor (checked first, before any row exists for her), but may register as
+    # an affiliate and leave again. (carla is both admin and the module's instructor, either of which would
+    # legitimately bypass this restriction via module_members_write — not a fair subject for this check.)
+    mallory = Session(args.dsn, "mallory")
+    mallory.expect_error("insert into kgdj.module_members (module_id, profile_id, member_role) values (%s,%s,'instructor')", (module_id, U["mallory"]), contains="row-level security")
+    mallory.q("insert into kgdj.module_members (module_id, profile_id, member_role) values (%s,%s,'affiliate')", (module_id, U["mallory"]))
+    assert admin.one("select member_role::text from kgdj.module_members where module_id=%s and profile_id=%s", (module_id, U["mallory"])) == "affiliate"
+    mallory.q("delete from kgdj.module_members where module_id=%s and profile_id=%s", (module_id, U["mallory"]))
+    assert admin.one("select count(*) from kgdj.module_members where module_id=%s and profile_id=%s", (module_id, U["mallory"])) == 0
+    print("module self-affiliation ok (affiliate join/leave; cannot self-assign instructor)")
+
+    # adopted canonical edges in a portfolio: alice adopts the earlier bob->tom 'grounds' edge into her subgraph
+    grounds_edge = admin.one("select id from kgdj.edges where source_node_id=%s and target_node_id=%s and relationship_code='grounds'", (src, tom))
+    alice.q("insert into kgdj.subgraph_links (subgraph_id, from_node_id, to_node_id, why, lens, edge_id) values (%s,%s,%s,'Adopted: social cognition frames theory-of-mind work.','canonical',%s)", (sg, src, tom, grounds_edge))
+    assert admin.one("select edge_id from kgdj.subgraph_links where subgraph_id=%s and edge_id is not null", (sg,)) == grounds_edge
+    print("adopted canonical edge in a portfolio ok")
+
+    # helpful votes: identified, one per voter, never on one's own review
+    eve_review = admin.one("select id from kgdj.reviews where node_id=%s and reviewer_id=%s", (seed, U["eve"]))
+    eve.expect_error("insert into kgdj.review_helpful (review_id, voter_id) values (%s,%s)", (eve_review, U["eve"]), contains="cannot mark your own")
+    alice.q("insert into kgdj.review_helpful (review_id, voter_id) values (%s,%s)", (eve_review, U["alice"]))
+    carla.q("insert into kgdj.review_helpful (review_id, voter_id) values (%s,%s)", (eve_review, U["carla"]))
+    assert admin.one("select helpful_count from kgdj.reviews_visible where id=%s", (eve_review,)) == 2
+    assert alice.one("select helpful_by_me from kgdj.reviews_visible where id=%s", (eve_review,)) is True
+    assert carla.one("select helpful_by_me from kgdj.reviews_visible where id=%s", (eve_review,)) is True
+    assert eve.one("select helpful_by_me from kgdj.reviews_visible where id=%s", (eve_review,)) is False
+    alice.q("delete from kgdj.review_helpful where review_id=%s and voter_id=%s", (eve_review, U["alice"]))
+    assert admin.one("select helpful_count from kgdj.reviews_visible where id=%s", (eve_review,)) == 1
+    print("helpful votes on reviews ok (identified, no self-votes, undoable)")
+
+    # extended leaderboard: alice's row exposes the new authentic measures without error
+    row = alice.q("""select approved_proposals, canonical_nodes_authored, citations_brought, reviews_written, portfolio_critiques,
+                            helpful_votes_received, reviews_upheld, substantive_reviews, annotated_nodes, connections_written,
+                            cross_dept_connections, lenses_used, questions_raised, resources_added, active_weeks
+                     from kgdj.leaderboard where profile_id=%s""", (U["alice"],))
+    assert len(row) == 1 and row[0][9] >= 2, f"alice's connections_written should include the fork + adopted edge: {row}"  # connections_written
+    print("extended leaderboard measures ok:", dict(zip(
+        ["approved", "nodes_authored", "citations", "reviews", "critiques", "helpful_recv", "upheld", "substantive", "annotated", "connections", "cross_dept", "lenses", "questions", "resources", "weeks"], row[0])))
+
+    # anonymised cohort statistics: released only once >= 3 portfolios are in scope (never fewer)
+    stats = alice.one("select kgdj.portfolio_cohort_stats('module', %s)", (module_id,))
+    assert stats["n"] == 1 and stats["metrics"] is None and "fewer than 3" in stats["reason"], stats
+    for name in ("chen", "dana"):
+        pid_extra = str(uuid.uuid5(uuid.NAMESPACE_DNS, name))
+        admin.q("insert into auth.users (id, email) values (%s, %s)", (pid_extra, f"{name}@uni-leipzig.de"))
+        admin.q("insert into kgdj.module_members (module_id, profile_id, member_role) values (%s,%s,'student')", (module_id, pid_extra))
+        admin.q("insert into kgdj.student_subgraphs (owner_id, module_id, title) values (%s,%s,'peer portfolio')", (pid_extra, module_id))
+    stats2 = alice.one("select kgdj.portfolio_cohort_stats('module', %s)", (module_id,))
+    assert stats2["n"] == 3 and stats2["metrics"] is not None and "canonical_nodes" in stats2["metrics"], stats2
+    mallory.expect_error("select kgdj.portfolio_cohort_stats('module', %s)", (module_id,), contains="not a member")  # a member, but not enrolled in this module
+    print("anonymised cohort statistics ok (withheld below n=3, released with aggregates at n=3, scoped to module members)")
+
     print("\nALL KGDJ DB TESTS PASSED")
 
 

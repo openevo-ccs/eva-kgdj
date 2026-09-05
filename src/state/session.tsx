@@ -1,8 +1,8 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { createApi, type Api } from "../lib/api";
-import type { Department, Module, Profile, Session } from "../lib/types";
+import type { Department, Module, ModuleMemberRole, Profile, Session } from "../lib/types";
 
-interface Ctx { api: Api | null; session: Session | null; profile: Profile | null; departments: Department[]; deptById: Record<string, Department>; myModules: { module: Module; role: string }[]; loading: boolean; refresh: () => Promise<void> }
+interface Ctx { api: Api | null; session: Session | null; profile: Profile | null; departments: Department[]; deptById: Record<string, Department>; myModules: { module: Module; role: ModuleMemberRole }[]; loading: boolean; refresh: () => Promise<void> }
 const C = createContext<Ctx>({ api: null, session: null, profile: null, departments: [], deptById: {}, myModules: [], loading: true, refresh: async () => {} });
 
 export function SessionProvider({ children }: { children: React.ReactNode }) {
@@ -10,7 +10,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [departments, setDepartments] = useState<Department[]>([]);
-  const [myModules, setMyModules] = useState<{ module: Module; role: string }[]>([]);
+  const [myModules, setMyModules] = useState<{ module: Module; role: ModuleMemberRole }[]>([]);
   const [loading, setLoading] = useState(true);
 
   async function load(a: Api) {

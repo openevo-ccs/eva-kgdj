@@ -1,11 +1,12 @@
 // supabase-js implementation of Api. Every call runs under the user's JWT;
-// Row-Level Security in supabase/migrations/0002_rls.sql is the authority —
-// nothing here filters for permission, it only shapes queries.
+// Row-Level Security in supabase/migrations/0002_rls.sql (+ 0005_ux.sql) is the
+// authority — nothing here filters for permission, it only shapes queries.
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import type { Api, CitationInput, DecisionInput, ProposalInput, ReviewInput } from "./api";
+import type { Api, CitationInput, DecisionInput, ForkItem, ProfilePatch, ProposalInput, ReviewInput } from "./api";
+import type { PortfolioBackup } from "./backup";
 import type {
-  Citation, ConsentPurpose, Department, GraphEdge, GraphNode, LeaderboardRow, Module, NodeDetail, PrivateNode, PrivateNodeType, Profile, Proposal,
-  ProposalDetail, ProposalStatus, Review, ReviewFlag, ReviewSummary, ReviewTarget, Session, Subgraph, SubgraphLink, SubgraphNode, Visibility,
+  Citation, CohortStats, ConsentPurpose, Department, EdgeDetail, GraphEdge, GraphNode, LeaderboardRow, Module, ModuleMemberRole, NodeDetail, PrivateNode, PrivateNodeType, Profile, Proposal,
+  ProposalDetail, ProposalStatus, ResearchGroup, Review, ReviewFlag, ReviewSummary, ReviewTarget, Session, Subgraph, SubgraphDetail, SubgraphLink, SubgraphNode, Visibility,
 } from "./types";
 
 function must<T>(r: { data: T | null; error: { message: string } | null }): T {
@@ -22,6 +23,7 @@ export class SupabaseApi implements Api {
     this.sb = createClient(url, anonKey, { db: { schema: "kgdj" }, auth: { persistSession: true, autoRefreshToken: true } });
   }
   private t(name: string) { return this.sb.from(name); }
+  private async uid() { const s = await this.getSession(); if (!s) throw new Error("not signed in"); return s.userId; }
 
   async getSession(): Promise<Session | null> {
     const { data } = await this.sb.auth.getSession();
@@ -43,13 +45,17 @@ export class SupabaseApi implements Api {
     return (data as Profile) ?? null;
   }
   async profiles(ids: string[]) { if (!ids.length) return []; return must(await this.t("profiles").select("*").in("id", ids)) as Profile[]; }
+  async updateProfile(patch: ProfilePatch) { const id = await this.uid(); return must(await this.t("profiles").update(patch).eq("id", id).select("*").single()) as Profile; }
   async departments() { return must(await this.t("departments").select("*").order("name")) as Department[]; }
+  async researchGroups() { return must(await this.t("research_groups").select("*").order("name")) as ResearchGroup[]; }
   async modules() { return must(await this.t("modules").select("*").order("cohort_year", { ascending: false })) as Module[]; }
   async myModules() {
     const s = await this.getSession(); if (!s) return [];
-    const rows = must(await this.t("module_members").select("member_role, modules(*)").eq("profile_id", s.userId)) as unknown as { member_role: string; modules: Module }[];
+    const rows = must(await this.t("module_members").select("member_role, modules(*)").eq("profile_id", s.userId)) as unknown as { member_role: ModuleMemberRole; modules: Module }[];
     return rows.map((r) => ({ module: r.modules, role: r.member_role }));
   }
+  async joinModule(module_id: string, role: "student" | "affiliate") { const id = await this.uid(); must(await this.t("module_members").insert({ module_id, profile_id: id, member_role: role })); }
+  async leaveModule(module_id: string) { const id = await this.uid(); must(await this.t("module_members").delete().eq("module_id", module_id).eq("profile_id", id)); }
   async graph() {
     const nodes = must(await this.t("nodes").select("*").neq("status", "archived")) as GraphNode[];
     const edges = must(await this.t("edges").select("*").neq("status", "archived")) as GraphEdge[];
@@ -64,6 +70,13 @@ export class SupabaseApi implements Api {
     const edges = must(await this.t("edges").select("*").or(`source_node_id.eq.${id},target_node_id.eq.${id}`).neq("status", "archived")) as GraphEdge[];
     const flags = must(await this.t("review_flags").select("*").eq("target_id", id).is("resolved_at", null)) as ReviewFlag[];
     return { node, citations: cit.map((c) => c.citations), reviews, summary, proposals, edges, flags };
+  }
+  async edge(id: string): Promise<EdgeDetail> {
+    const edge = must(await this.t("edges").select("*").eq("id", id).single()) as GraphEdge;
+    const ends = must(await this.t("nodes").select("*").in("id", [edge.source_node_id, edge.target_node_id])) as GraphNode[];
+    const cit = must(await this.t("edge_citations").select("citations(*)").eq("edge_id", id)) as unknown as { citations: Citation }[];
+    const reviews = must(await this.t("reviews_visible").select("*").eq("edge_id", id).order("created_at")) as Review[];
+    return { edge, source: ends.find((n) => n.id === edge.source_node_id) || null, target: ends.find((n) => n.id === edge.target_node_id) || null, reviews, summary: await this.reviewSummary("edge", id), citations: cit.map((c) => c.citations) };
   }
   async searchCitations(q: string) {
     if (!q.trim()) return [];
@@ -107,6 +120,11 @@ export class SupabaseApi implements Api {
     const col = { proposal: "proposal_id", node: "node_id", edge: "edge_id", subgraph: "subgraph_id" }[r.target_kind];
     must(await this.t("reviews").insert({ target_kind: r.target_kind, [col]: r.target_id, reviewer_id: s.userId, rating: r.rating, commentary_md: r.commentary_md, week: r.week ?? null }));
   }
+  async markHelpful(review_id: string, helpful: boolean) {
+    const id = await this.uid();
+    if (helpful) must(await this.t("review_helpful").upsert({ review_id, voter_id: id }));
+    else must(await this.t("review_helpful").delete().eq("review_id", review_id).eq("voter_id", id));
+  }
   async reviewSummary(kind: ReviewTarget, id: string) {
     const { data } = await this.t("review_summary").select("*").eq("target_kind", kind).eq("target_id", id).maybeSingle();
     return (data as ReviewSummary) ?? null;
@@ -127,7 +145,7 @@ export class SupabaseApi implements Api {
     return { proposals, summaries: Object.fromEntries(rows.map((r) => [r.target_id, r])) };
   }
   async subgraphs() { return must(await this.t("student_subgraphs").select("*").order("updated_at", { ascending: false })) as Subgraph[]; }
-  async subgraph(id: string) {
+  async subgraph(id: string): Promise<SubgraphDetail> {
     const subgraph = must(await this.t("student_subgraphs").select("*").eq("id", id).single()) as Subgraph;
     const nodes = must(await this.t("subgraph_nodes").select("*").eq("subgraph_id", id)) as SubgraphNode[];
     const privateNodes = must(await this.t("subgraph_private_nodes").select("*").eq("subgraph_id", id)) as PrivateNode[];
@@ -139,13 +157,26 @@ export class SupabaseApi implements Api {
     const s = await this.getSession(); if (!s) throw new Error("not signed in");
     return must(await this.t("student_subgraphs").insert({ owner_id: s.userId, title, module_id }).select("*").single()) as Subgraph;
   }
+  async updateSubgraph(id: string, patch: { title?: string; description?: string; last_checkpoint_week?: number | null }) { must(await this.t("student_subgraphs").update(patch).eq("id", id)); }
+  async deleteSubgraph(id: string) { must(await this.t("student_subgraphs").delete().eq("id", id)); }
   async forkNode(subgraph_id: string, node_id: string, annotation: string, week: number | null) {
     must(await this.t("subgraph_nodes").upsert({ subgraph_id, node_id, custom_annotation: annotation, added_week: week }));
   }
+  async forkNodes(subgraph_id: string, items: ForkItem[]) {
+    if (!items.length) return;
+    must(await this.t("subgraph_nodes").upsert(items.map((i) => ({ subgraph_id, node_id: i.node_id, custom_annotation: i.annotation, added_week: i.week })), { onConflict: "subgraph_id,node_id", ignoreDuplicates: true }));
+  }
+  async updateAnnotation(subgraph_id: string, node_id: string, annotation: string, week: number | null) { must(await this.t("subgraph_nodes").update({ custom_annotation: annotation, added_week: week }).eq("subgraph_id", subgraph_id).eq("node_id", node_id)); }
+  async removeNode(subgraph_id: string, node_id: string) { must(await this.t("subgraph_nodes").delete().eq("subgraph_id", subgraph_id).eq("node_id", node_id)); }
   async addPrivateNode(subgraph_id: string, node_type: PrivateNodeType, label: string, source: string | null, week: number | null) {
     return must(await this.t("subgraph_private_nodes").insert({ subgraph_id, node_type, label, source, created_week: week }).select("*").single()) as PrivateNode;
   }
+  async updatePrivateNode(id: string, patch: { label?: string; source?: string | null; node_type?: PrivateNodeType; created_week?: number | null }) { must(await this.t("subgraph_private_nodes").update(patch).eq("id", id)); }
+  async removePrivateNode(id: string) { must(await this.t("subgraph_private_nodes").delete().eq("id", id)); }
   async addLink(l: Omit<SubgraphLink, "id">) { must(await this.t("subgraph_links").insert(l)); }
+  async addLinks(ls: Omit<SubgraphLink, "id">[]) { if (ls.length) must(await this.t("subgraph_links").insert(ls)); }
+  async updateLink(id: string, patch: { why?: string; lens?: string | null; created_week?: number | null }) { must(await this.t("subgraph_links").update(patch).eq("id", id)); }
+  async removeLink(id: string) { must(await this.t("subgraph_links").delete().eq("id", id)); }
   async savePositions(subgraph_id: string, positions: { node_id?: string; private_id?: string; x: number; y: number }[]) {
     for (const p of positions) {
       if (p.node_id) must(await this.t("subgraph_nodes").update({ pos_x: p.x, pos_y: p.y }).eq("subgraph_id", subgraph_id).eq("node_id", p.node_id));
@@ -157,7 +188,21 @@ export class SupabaseApi implements Api {
     const p = must(await this.t("profiles").select("id").eq("username", username).single()) as { id: string };
     must(await this.t("subgraph_shares").upsert({ subgraph_id, profile_id: p.id, can_review: true }));
   }
-  async leaderboard() { return must(await this.t("leaderboard").select("*").order("approved_proposals", { ascending: false })) as LeaderboardRow[]; }
+  async importPortfolio(b: PortfolioBackup, title: string, module_id: string | null) {
+    const g = await this.createSubgraph(title, module_id);
+    const slugs = b.nodes.map((n) => n.slug).filter(Boolean) as string[];
+    const found = slugs.length ? (must(await this.t("nodes").select("id, slug").in("slug", slugs)) as { id: string; slug: string }[]) : [];
+    const bySlug = Object.fromEntries(found.map((n) => [n.slug, n.id])); const map: Record<string, string> = {};
+    const notNull = <T,>(x: T | null): x is T => x != null;
+    const rows = b.nodes.map((n) => { const id = (n.slug && bySlug[n.slug]) || null; if (!id) return null; map[n.node_id] = id; return { subgraph_id: g.id, node_id: id, custom_annotation: n.custom_annotation || "", pos_x: n.pos_x, pos_y: n.pos_y, added_week: n.added_week }; }).filter(notNull);
+    if (rows.length) must(await this.t("subgraph_nodes").upsert(rows, { onConflict: "subgraph_id,node_id", ignoreDuplicates: true }));
+    for (const p of b.private_nodes) { const np = must(await this.t("subgraph_private_nodes").insert({ subgraph_id: g.id, node_type: p.node_type, label: p.label, source: p.source, origin: p.origin, created_week: p.created_week, pos_x: p.pos_x, pos_y: p.pos_y }).select("id").single()) as { id: string }; map[p.id] = np.id; }
+    const links = b.links.map((l) => { const f = l.from_node_id ? map[l.from_node_id] : map[l.from_private_id!], t = l.to_node_id ? map[l.to_node_id] : map[l.to_private_id!]; if (!f || !t) return null; return { subgraph_id: g.id, from_node_id: l.from_node_id ? f : null, from_private_id: l.from_private_id ? f : null, to_node_id: l.to_node_id ? t : null, to_private_id: l.to_private_id ? t : null, why: l.why, lens: l.lens, created_week: l.created_week }; }).filter(notNull);
+    if (links.length) must(await this.t("subgraph_links").insert(links));
+    return g;
+  }
+  async cohortStats(scope: "module" | "program" | "members", module_id?: string | null) { return must(await this.sb.rpc("portfolio_cohort_stats", { scope, module: module_id ?? null })) as CohortStats; }
+  async leaderboard() { return must(await this.t("leaderboard").select("*")) as LeaderboardRow[]; }
   async consents() {
     const s = await this.getSession(); const out = { portfolio_processing: false, peer_review_visibility: false, leaderboard_display: false, canonical_attribution: false } as Record<ConsentPurpose, boolean>;
     if (!s) return out;

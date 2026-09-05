@@ -5,3 +5,4 @@ dist/
 !.env.example
 src/mock/graph.json
 *.local
+*.tsbuildinfo
