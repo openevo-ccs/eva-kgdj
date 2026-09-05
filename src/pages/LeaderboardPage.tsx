@@ -23,7 +23,7 @@ const BOARDS: Board[] = [
   { group: "Portfolio craft", key: "lenses_used", title: "Widest lens", blurb: "Distinct lenses (mechanism, evidence, method…) used on connections" },
   { group: "Portfolio craft", key: "questions_raised", title: "Question raiser", blurb: "Own question nodes" },
   { group: "Portfolio craft", key: "resources_added", title: "Resource finder", blurb: "Own resource nodes, with a source" },
-  { group: "Habits", key: "active_weeks", title: "Steadiest rhythm", blurb: "Distinct module weeks with something added or reviewed" },
+  { group: "Habits", key: "active_days", title: "Steadiest rhythm", blurb: "Distinct days with something added or reviewed" },
 ];
 const GROUPS = ["Reviewing", "Contributing", "Portfolio craft", "Habits"] as const;
 const ROLE_LABEL: Record<Role, string> = { msc_student: "student", researcher: "researcher", editor: "editor", admin: "admin" };

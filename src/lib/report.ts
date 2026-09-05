@@ -10,8 +10,9 @@ export function portfolioMetrics(d: SubgraphDetail, nodesById: Record<string, Gr
   const avg = (xs: number[]) => (xs.length ? Math.round(xs.reduce((a, b) => a + b, 0) / xs.length) : 0);
   const depts = new Set<string>(); const types = new Set<string>();
   for (const sn of d.nodes) { const n = nodesById[sn.node_id]; if (!n) continue; if (n.department_id) depts.add(n.department_id); types.add(n.type_code); }
-  const weeks = new Set<number>();
-  d.nodes.forEach((n) => n.added_week && weeks.add(n.added_week)); d.privateNodes.forEach((n) => n.created_week && weeks.add(n.created_week)); d.links.forEach((l) => l.created_week && weeks.add(l.created_week));
+  const day = (iso: string) => iso.slice(0, 10);
+  const days = new Set<string>();
+  d.nodes.forEach((n) => days.add(day(n.added_at))); d.privateNodes.forEach((n) => days.add(day(n.created_at))); d.links.forEach((l) => days.add(day(l.created_at)));
   const cross = d.links.filter((l) => { const a = l.from_node_id ? nodesById[l.from_node_id] : null, b = l.to_node_id ? nodesById[l.to_node_id] : null; return a?.department_id && b?.department_id && a.department_id !== b.department_id; }).length;
   const byType = (t: string) => d.privateNodes.filter((p) => p.node_type === t).length;
   return {
@@ -19,7 +20,7 @@ export function portfolioMetrics(d: SubgraphDetail, nodesById: Record<string, Gr
     own_nodes: d.privateNodes.length, questions: byType("question"), resources: byType("resource"), theories: byType("theory"), methods: byType("method"),
     connections: d.links.length, avg_why_len: avg(d.links.map((l) => l.why.length)), lenses: new Set(d.links.map((l) => (l.lens || "").trim()).filter(Boolean)).size,
     adopted_edges: d.links.filter((l) => l.edge_id).length, cross_dept_connections: cross,
-    departments_covered: depts.size, node_types_covered: types.size, weeks_active: weeks.size, critiques_received: d.reviews.length,
+    departments_covered: depts.size, node_types_covered: types.size, active_days: days.size, critiques_received: d.reviews.length,
   };
 }
 
@@ -28,7 +29,7 @@ export const METRIC_LABEL: Record<MetricKey, string> = {
   own_nodes: "own nodes", questions: "questions raised", resources: "resources added", theories: "own theory nodes", methods: "own method nodes",
   connections: "connections written", avg_why_len: "average 'because' length", lenses: "distinct lenses used", adopted_edges: "canonical edges adopted",
   cross_dept_connections: "connections across departments", departments_covered: "departments touched", node_types_covered: "node types touched",
-  weeks_active: "weeks with activity", critiques_received: "critiques received",
+  active_days: "distinct days active", critiques_received: "critiques received",
 };
 
 export interface Dimension { key: string; title: string; blurb: string; metrics: MetricKey[]; next: string }
@@ -38,7 +39,7 @@ export const DIMENSIONS: Dimension[] = [
   { key: "reasoning", title: "Reasoning in connections", blurb: "The 'because' sentences — the core of the exercise.", metrics: ["connections", "avg_why_len", "lenses"], next: "Rewrite one 'because' so that someone outside the module could follow it; try a lens you have not used (mechanism, evidence, method, history)." },
   { key: "bridging", title: "Bridging", blurb: "Links that cross department lines or adopt canonical structure and re-explain it.", metrics: ["cross_dept_connections", "adopted_edges"], next: "Find two nodes from different departments that speak to the same question and connect them." },
   { key: "voice", title: "Own voice", blurb: "Nodes that exist only because you added them: questions, resources, theories, methods.", metrics: ["own_nodes", "questions", "resources", "theories", "methods"], next: "Add one question you actually have, and one resource you found yourself, with its source." },
-  { key: "rhythm", title: "Rhythm", blurb: "Whether the portfolio grew week by week or in one sitting.", metrics: ["weeks_active"], next: "Tag this week's additions with the week number so your own trajectory becomes visible." },
+  { key: "rhythm", title: "Rhythm", blurb: "Whether the portfolio grew over several sessions or in one sitting.", metrics: ["active_days"], next: "Come back to it again this week — even one new connection keeps the rhythm visible." },
   { key: "dialogue", title: "Dialogue", blurb: "Critique you invited from classmates.", metrics: ["critiques_received"], next: "Share the portfolio with one classmate and ask for a critique of a specific connection." },
 ];
 
@@ -52,7 +53,7 @@ function position(mine: number, c: CohortStats | null, k: MetricKey): { pos: Pos
 export interface ReportInput {
   title: string; owner: string; moduleName: string | null; generatedAt: Date; metrics: PortfolioMetrics; cohorts: CohortStats[];
   nodes: { label: string; type: string; dept: string | null; annotation: string }[]; privateNodes: { label: string; type: string; source: string | null }[];
-  links: { from: string; to: string; why: string; lens: string | null; week: number | null }[];
+  links: { from: string; to: string; why: string; lens: string | null; created_at: string }[];
 }
 
 const esc = (s: unknown) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string));
@@ -105,7 +106,7 @@ ${growth.length ? `<h2>Where there is most room to grow</h2><div class="sig">${g
 ${r.cohorts.map((c) => `<p class="muted">${esc(scopeName(c))}: ${c.metrics ? `${c.n} portfolios aggregated` : esc(c.reason || "no aggregates")}.</p>`).join("")}
 ${dimHtml}
 <h2>Your connections (${r.links.length})</h2>
-${r.links.length ? r.links.map((l) => `<p class="why"><b>${esc(l.from)} → ${esc(l.to)}</b>${l.lens ? ` <span class="muted">[${esc(l.lens)}]</span>` : ""}${l.week ? ` <span class="muted">week ${l.week}</span>` : ""}<br>${esc(l.why)}</p>`).join("") : `<p class="muted">None yet.</p>`}
+${r.links.length ? r.links.map((l) => `<p class="why"><b>${esc(l.from)} → ${esc(l.to)}</b>${l.lens ? ` <span class="muted">[${esc(l.lens)}]</span>` : ""} <span class="muted">${esc(new Date(l.created_at).toLocaleDateString())}</span><br>${esc(l.why)}</p>`).join("") : `<p class="muted">None yet.</p>`}
 <h2>Nodes (${r.nodes.length} canonical · ${r.privateNodes.length} own)</h2>
 <table><thead><tr><th>node</th><th>type</th><th>department</th><th>your annotation</th></tr></thead><tbody>
 ${r.nodes.map((n) => `<tr><td>${esc(n.label)}</td><td>${esc(n.type)}</td><td>${esc(n.dept ?? "—")}</td><td>${esc(n.annotation) || '<span class="muted">(none)</span>'}</td></tr>`).join("")}

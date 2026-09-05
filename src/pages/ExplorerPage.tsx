@@ -2,7 +2,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type cytoscape from "cytoscape";
 import type { Core } from "cytoscape";
-import { GraphCanvas, connectingSubgraph, edgesAmong, fitGraph, neighbourhood, clearSelection, type LayoutName, type Selection } from "../components/GraphCanvas";
+import { GraphCanvas, connectingSubgraph, edgesAmong, fitGraph, neighbourhood, clearSelection, type CtxTarget, type LayoutName, type PhysicsParams, type Selection } from "../components/GraphCanvas";
+import type { ContextMenuItem } from "../components/ContextMenu";
+import { LayoutPicker, loadGraphPrefs } from "../components/LayoutPicker";
+import { ResizableDrawer } from "../components/ResizableDrawer";
 import { NodeDrawer } from "../components/NodeDrawer";
 import { EdgeDrawer } from "../components/EdgeDrawer";
 import { Help, Tip } from "../components/Tip";
@@ -17,7 +20,6 @@ const ANALYSIS: { key: Analysis; label: string; tip: string; explain: string }[]
   { key: "communities", label: "communities", tip: "Colour nodes by cluster (label propagation): nodes that are more connected to each other than to the rest get the same colour.", explain: "Colours now show clusters found by label propagation on the visible graph, instead of departments. Clusters that cut across departments are the interesting ones." },
   { key: "path", label: "shortest path", tip: "Click a start node, then a target node, to highlight the shortest route between them.", explain: "" },
 ];
-const LAYOUT_TIP: Record<Exclude<LayoutName, "preset">, string> = { cose: "Organic: connected nodes pull together, everything else repels.", dagre: "Hierarchical: follows edge direction left → right (good for 'grounds' / 'enables' chains).", concentric: "Rings: the most connected nodes in the centre.", grid: "Plain grid, alphabetical." };
 type AddMode = "nodes" | "nodes_edges" | "connecting" | "neighbourhood";
 
 export default function ExplorerPage() {
@@ -29,14 +31,16 @@ export default function ExplorerPage() {
   const [statuses, setStatuses] = useState<Set<string>>(new Set(["canonical", "proposed"]));
   const [types, setTypes] = useState<Set<string>>(new Set());
   const [q, setQ] = useState("");
-  const [layout, setLayout] = useState<LayoutName>("cose");
+  const prefs = useMemo(loadGraphPrefs, []);
+  const [layout, setLayout] = useState<LayoutName>(prefs.layout);
+  const [physics, setPhysics] = useState<PhysicsParams>(prefs.physics);
   const [analysis, setAnalysis] = useState<Analysis>("none");
   const [pathFrom, setPathFrom] = useState<string | null>(null);
   const [path, setPath] = useState<string[] | null>(null);
   const [degreeTop, setDegreeTop] = useState<{ id: string; label: string; d: number }[]>([]);
   const [sel, setSel] = useState<Selection>({ nodes: [], edges: [] });
   const [addOpen, setAddOpen] = useState(false);
-  const [mine, setMine] = useState<Subgraph[]>([]); const [target, setTarget] = useState<string>("new"); const [newTitle, setNewTitle] = useState("My orientation graph"); const [week, setWeek] = useState<number | "">("");
+  const [mine, setMine] = useState<Subgraph[]>([]); const [target, setTarget] = useState<string>("new"); const [newTitle, setNewTitle] = useState("My orientation graph");
   const [myNodeIds, setMyNodeIds] = useState<Set<string>>(new Set());
   const [notice, setNotice] = useState<{ kind: "ok" | "bad"; text: string; link?: string } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -100,11 +104,10 @@ export default function ExplorerPage() {
       if (gid === "new" || !mine.some((g) => g.id === gid)) { const g = await api.createSubgraph(newTitle, myModules[0]?.module.id ?? null); gid = g.id; title = g.title; }
       const current = await api.subgraph(gid);
       const have = new Set(current.nodes.map((n) => n.node_id)); const haveEdges = new Set(current.links.map((l) => l.edge_id).filter(Boolean));
-      const wk = week === "" ? null : Number(week);
       const newNodes = what.nodes.filter((id) => !have.has(id));
-      await api.forkNodes(gid, newNodes.map((id) => ({ node_id: id, annotation: "", week: wk })));
+      await api.forkNodes(gid, newNodes.map((id) => ({ node_id: id, annotation: "" })));
       const newEdges = what.edges.map((id) => edgesById[id]).filter((e) => e && !haveEdges.has(e.id));
-      await api.addLinks(newEdges.map((e) => ({ subgraph_id: gid, from_node_id: e.source_node_id, from_private_id: null, to_node_id: e.target_node_id, to_private_id: null, edge_id: e.id, lens: "canonical", created_week: wk,
+      await api.addLinks(newEdges.map((e) => ({ subgraph_id: gid, from_node_id: e.source_node_id, from_private_id: null, to_node_id: e.target_node_id, to_private_id: null, edge_id: e.id, lens: "canonical",
         why: `Canonical relationship: ${e.relationship_code}${e.label ? ` — ${e.label}` : ""}. (Rewrite this in your own words: why does this connection matter to you?)` })));
       setNotice({ kind: "ok", text: `Added ${newNodes.length} node${newNodes.length === 1 ? "" : "s"} and ${newEdges.length} connection${newEdges.length === 1 ? "" : "s"} to "${title}"${what.nodes.length - newNodes.length ? ` (${what.nodes.length - newNodes.length} already there)` : ""}.`, link: `/portfolio/${gid}` });
       setAddOpen(false); clearSelection(cyRef.current); loadMine();
@@ -112,6 +115,27 @@ export default function ExplorerPage() {
   };
   const counts = (mode: AddMode) => { const p = preview(mode); return `${p.nodes.length} node${p.nodes.length === 1 ? "" : "s"}${p.edges.length ? `, ${p.edges.length} edge${p.edges.length === 1 ? "" : "s"}` : ""}`; };
   const active = ANALYSIS.find((a) => a.key === analysis)!;
+
+  // ---- right-click "Add to my portfolio" (single item, or the live selection if the target is part of it) ----
+  const quickAdd = async (nodeIds: string[]) => {
+    if (!nodeIds.length) return; setBusy(true); setNotice(null);
+    try {
+      let gid = target; let title = mine.find((g) => g.id === gid)?.title || newTitle;
+      if (gid === "new" || !mine.some((g) => g.id === gid)) { const g = await api.createSubgraph(newTitle, myModules[0]?.module.id ?? null); gid = g.id; title = g.title; }
+      const current = await api.subgraph(gid); const have = new Set(current.nodes.map((n) => n.node_id));
+      const newNodes = nodeIds.filter((id) => !have.has(id));
+      await api.forkNodes(gid, newNodes.map((id) => ({ node_id: id, annotation: "" })));
+      setNotice({ kind: "ok", text: `Added ${newNodes.length} node${newNodes.length === 1 ? "" : "s"} to "${title}"${nodeIds.length - newNodes.length ? ` (${nodeIds.length - newNodes.length} already there)` : ""}.`, link: `/portfolio/${gid}` });
+      loadMine();
+    } catch (e) { setNotice({ kind: "bad", text: (e as Error).message }); } finally { setBusy(false); }
+  };
+  const contextMenuExtra = (ctxTarget: CtxTarget, liveSel: Selection): ContextMenuItem[] => {
+    if (ctxTarget.kind === "background") return [];
+    const nodeIds = ctxTarget.kind === "node" ? (liveSel.nodes.includes(ctxTarget.id) ? liveSel.nodes : [ctxTarget.id])
+      : (() => { const e = edgesById[ctxTarget.id]; return e ? (liveSel.nodes.length ? liveSel.nodes : [e.source_node_id, e.target_node_id]) : []; })();
+    if (!nodeIds.length) return [];
+    return [{ label: nodeIds.length > 1 ? `Add ${nodeIds.length} nodes to my portfolio` : "Add to my portfolio", onClick: () => quickAdd(nodeIds) }];
+  };
 
   return (
     <div className="explorer" style={{ flex: 1, minWidth: 0 }}>
@@ -123,11 +147,9 @@ export default function ExplorerPage() {
         <span className="muted">|</span>
         {allTypes.map((t) => <Tip key={t} text={`Show or hide nodes of type "${t}"`}><label><input type="checkbox" checked={types.has(t)} onChange={() => toggle(types, t, setTypes)} />{t}</label></Tip>)}
         <span className="muted">|</span>
-        <span data-tour="layout" className="row" style={{ gap: 6 }}>
-          <Tip text={LAYOUT_TIP[layout as Exclude<LayoutName, "preset">] || "Layout"}><select value={layout} onChange={(e) => setLayout(e.target.value as LayoutName)} aria-label="Layout"><option value="cose">layout: organic</option><option value="dagre">layout: hierarchical</option><option value="concentric">layout: rings by degree</option><option value="grid">layout: grid</option></select></Tip>
-          <span className="seg" role="group" aria-label="Graph analysis"><span className="seg-label">analysis <Help text="Analyses run on the nodes currently visible (after your filters). Centrality: node size = connections. Communities: colour = cluster. Shortest path: click two nodes." /></span>
-            {ANALYSIS.map((a) => <Tip key={a.key} text={a.tip}><button className={analysis === a.key ? "active" : ""} onClick={() => { setAnalysis(a.key); setPath(null); setPathFrom(null); }}>{a.label}</button></Tip>)}
-          </span>
+        <LayoutPicker layout={layout} onLayout={setLayout} physics={physics} onPhysics={setPhysics} />
+        <span className="seg" role="group" aria-label="Graph analysis"><span className="seg-label">analysis <Help text="Analyses run on the nodes currently visible (after your filters). Centrality: node size = connections. Communities: colour = cluster. Shortest path: click two nodes." /></span>
+          {ANALYSIS.map((a) => <Tip key={a.key} text={a.tip}><button className={analysis === a.key ? "active" : ""} onClick={() => { setAnalysis(a.key); setPath(null); setPathFrom(null); }}>{a.label}</button></Tip>)}
         </span>
         <Tip text="Fit the whole graph in view (or the selection, if any)"><button className="btn" onClick={() => fitGraph(cyRef.current, true)}>Fit</button></Tip>
         <span className="muted">{visible.nodes.length} nodes · {visible.edges.length} edges</span>
@@ -143,7 +165,6 @@ export default function ExplorerPage() {
           {addOpen && <div className="popover">
             <div className="field"><label>Portfolio</label><select value={target} onChange={(e) => setTarget(e.target.value)}>{mine.map((g) => <option key={g.id} value={g.id}>{g.title}</option>)}<option value="new">+ new portfolio…</option></select></div>
             {(target === "new" || !mine.length) && <div className="field"><label>Title</label><input value={newTitle} onChange={(e) => setNewTitle(e.target.value)} /></div>}
-            <div className="field"><label>Module week (optional)</label><input type="number" min={1} max={15} value={week} onChange={(e) => setWeek(e.target.value === "" ? "" : Number(e.target.value))} style={{ width: 80 }} /></div>
             <div className="menu">
               <button disabled={busy} onClick={() => addToPortfolio("nodes")}><b>Add selected nodes</b><span className="muted">{counts("nodes")} — endpoints of selected edges included</span></button>
               <button disabled={busy} onClick={() => addToPortfolio("nodes_edges")}><b>Add selected nodes and edges</b><span className="muted">{counts("nodes_edges")} — every canonical edge among them becomes a connection you can rewrite</span></button>
@@ -158,8 +179,8 @@ export default function ExplorerPage() {
       {notice && <div className={`notice notice-${notice.kind}`} style={{ margin: "6px 12px 0" }}>{notice.text} {notice.link && <Link to={notice.link}>Open portfolio →</Link>} <button className="btn btn-mini" onClick={() => setNotice(null)} style={{ marginLeft: 8 }}>×</button></div>}
       <div className="explorer-body">
         <div className="graph-host" data-tour="canvas">
-          <GraphCanvas nodes={visible.nodes} edges={visible.edges} deptById={deptById} layout={layout} selectedId={nodeId ?? null} onSelect={select} selectedEdgeId={edgeId} onSelectEdge={selectEdge} onSelectionChange={setSel}
-            communities={communities} communityColors={COMMUNITY_COLORS} highlightPath={path} sizeByDegree={analysis === "degree"}
+          <GraphCanvas nodes={visible.nodes} edges={visible.edges} deptById={deptById} layout={layout} physicsParams={physics} selectedId={nodeId ?? null} onSelect={select} selectedEdgeId={edgeId} onSelectEdge={selectEdge} onSelectionChange={setSel}
+            contextMenuExtra={contextMenuExtra} communities={communities} communityColors={COMMUNITY_COLORS} highlightPath={path} sizeByDegree={analysis === "degree"}
             onReady={(cy) => { cyRef.current = cy; if (new URLSearchParams(window.location.search).get("debug")) (window as unknown as { __cy?: Core }).__cy = cy; }} />
           <div className="legend">
             <Tip text="Promoted by an editor after identified review"><span><span className="dept-sw" style={{ background: "#fff", border: "2px solid #1a6b46" }} />canonical</span></Tip>
@@ -176,13 +197,15 @@ export default function ExplorerPage() {
           )}
         </div>
         <div data-tour="drawer" style={{ display: "contents" }}>
-          {nodeId ? <NodeDrawer nodeId={nodeId} nodesById={nodesById} inPortfolio={myNodeIds.has(nodeId)} onClose={() => nav("/explore")} onChanged={() => { setVersion((v) => v + 1); loadMine(); }} />
-            : edgeId ? <EdgeDrawer edgeId={edgeId} onClose={() => nav("/explore")} onChanged={() => setVersion((v) => v + 1)} />
-            : <div className="drawer"><h2>Canonical graph explorer</h2>
-                <p className="muted">Click a node for its description, citations, reviews and open proposals; add it to your portfolio; or propose a change. Click an edge to see and review the relationship.</p>
-                <p className="muted">Dashed nodes are the imported seed awaiting review — each needs identified reviewers before an editor promotes it. Hold <b>Ctrl</b> to select several nodes and edges, then use <b>Add to my portfolio</b>.</p>
-                {mine.length > 0 && <p className="muted">Nodes already in one of your portfolios: <b>{myNodeIds.size}</b>. <Link to="/portfolio">Open portfolios →</Link></p>}
-              </div>}
+          <ResizableDrawer>
+            {nodeId ? <NodeDrawer nodeId={nodeId} nodesById={nodesById} inPortfolio={myNodeIds.has(nodeId)} onClose={() => nav("/explore")} onChanged={() => { setVersion((v) => v + 1); loadMine(); }} />
+              : edgeId ? <EdgeDrawer edgeId={edgeId} onClose={() => nav("/explore")} onChanged={() => setVersion((v) => v + 1)} />
+              : <div className="drawer"><h2>Canonical graph explorer</h2>
+                  <p className="muted">Click a node for its description, citations, reviews and open proposals; add it to your portfolio; or propose a change. Click an edge to see and review the relationship.</p>
+                  <p className="muted">Dashed nodes are the imported seed awaiting review — each needs identified reviewers before an editor promotes it. Hold <b>Ctrl</b> to select several nodes and edges, or right-click one for quick actions, then use <b>Add to my portfolio</b>.</p>
+                  {mine.length > 0 && <p className="muted">Nodes already in one of your portfolios: <b>{myNodeIds.size}</b>. <Link to="/portfolio">Open portfolios →</Link></p>}
+                </div>}
+          </ResizableDrawer>
         </div>
       </div>
     </div>

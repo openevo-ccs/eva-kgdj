@@ -51,10 +51,16 @@ export interface ReviewFlag { id: string; target_kind: ReviewTarget; target_id: 
 export interface EditorialDecision { id: string; proposal_id: string | null; node_id: string | null; edge_id: string | null; editor_id: string; decision: Decision; feedback: string; decided_at: string }
 
 export interface Subgraph { id: string; owner_id: string; module_id: string | null; title: string; description: string; visibility: Visibility; last_checkpoint_week: number | null; created_at: string }
-export interface SubgraphNode { subgraph_id: string; node_id: string; custom_annotation: string; pos_x: number | null; pos_y: number | null; added_week: number | null }
-export interface PrivateNode { id: string; subgraph_id: string; node_type: PrivateNodeType; label: string; source: string | null; origin: string | null; created_week: number | null; pos_x: number | null; pos_y: number | null }
-export interface SubgraphLink { id: string; subgraph_id: string; from_node_id: string | null; from_private_id: string | null; to_node_id: string | null; to_private_id: string | null; why: string; lens: string | null; created_week: number | null; edge_id?: string | null }
-export interface SubgraphDetail { subgraph: Subgraph; nodes: SubgraphNode[]; privateNodes: PrivateNode[]; links: SubgraphLink[]; reviews: Review[] }
+// added_week/created_week are legacy — the UI no longer asks for them, kept only so old
+// backup files (lib/backup.ts) and pre-existing rows still round-trip; added_at/created_at
+// are the real, always-populated timestamps. shared/shared_at: see setNodeShared etc. in api.ts.
+export interface SubgraphNode { subgraph_id: string; node_id: string; custom_annotation: string; pos_x: number | null; pos_y: number | null; added_week?: number | null; added_at: string; updated_at: string; shared: boolean; shared_at: string | null }
+export interface PrivateNode { id: string; subgraph_id: string; node_type: PrivateNodeType; label: string; source: string | null; origin: string | null; created_week?: number | null; pos_x: number | null; pos_y: number | null; created_at: string; updated_at: string; shared: boolean; shared_at: string | null }
+export interface SubgraphLink { id: string; subgraph_id: string; from_node_id: string | null; from_private_id: string | null; to_node_id: string | null; to_private_id: string | null; why: string; lens: string | null; created_week?: number | null; edge_id?: string | null; created_at: string; updated_at: string; shared: boolean; shared_at: string | null }
+// full_access: whether the viewer can see the whole portfolio (owner/instructor/shared-with/
+// members-visibility) vs. only reached it through one shared item (see kgdj.can_see_subgraph
+// in 0002_rls.sql) — the UI uses this to hide the critique thread on a partial view.
+export interface SubgraphDetail { subgraph: Subgraph; nodes: SubgraphNode[]; privateNodes: PrivateNode[]; links: SubgraphLink[]; reviews: Review[]; full_access: boolean }
 
 // One row per opted-in member; the Leaderboard page derives a separate top list per measure.
 export interface LeaderboardRow {
@@ -62,14 +68,22 @@ export interface LeaderboardRow {
   approved_proposals: number; open_proposals: number; canonical_nodes_authored: number; citations_brought: number;
   reviews_written: number; portfolio_critiques: number; helpful_votes_received: number; reviews_upheld: number; substantive_reviews: number;
   annotated_nodes: number; annotation_chars: number; connections_written: number; cross_dept_connections: number; lenses_used: number;
-  questions_raised: number; resources_added: number; active_weeks: number;
+  questions_raised: number; resources_added: number; active_days: number;
 }
 
-// Same keys as kgdj.portfolio_metrics() in 0005_ux.sql; computed client-side for the reader's own portfolio (lib/report.ts).
+// Same keys as kgdj.portfolio_metrics() in 0005/0006_*.sql; computed client-side for the reader's own portfolio (lib/report.ts).
 export type MetricKey = "canonical_nodes" | "annotated_nodes" | "avg_annotation_len" | "own_nodes" | "questions" | "resources" | "theories" | "methods"
-  | "connections" | "avg_why_len" | "lenses" | "adopted_edges" | "cross_dept_connections" | "departments_covered" | "node_types_covered" | "weeks_active" | "critiques_received";
+  | "connections" | "avg_why_len" | "lenses" | "adopted_edges" | "cross_dept_connections" | "departments_covered" | "node_types_covered" | "active_days" | "critiques_received";
 export type PortfolioMetrics = Record<MetricKey, number>;
 export interface CohortStats { scope: "module" | "program" | "members"; n: number; metrics: Record<string, { mean: number; median: number; p75: number; max: number }> | null; reason?: string }
+
+// One shared node/private-node/link, for the Commons list (pages/CommonsPage.tsx).
+export type CommonsKind = "node" | "private_node" | "link";
+export interface CommonsItem {
+  kind: CommonsKind; subgraph_id: string; subgraph_title: string; owner_username: string; module_name: string | null; shared_at: string;
+  label: string; sub_label?: string;                    // sub_label: node's dept/type, or a link's "A → B"
+  node_id?: string;                                       // present for kind "node" (open it in the canonical graph)
+}
 
 export interface Session { userId: string; email: string | null }
 export interface NodeDetail { node: GraphNode; citations: Citation[]; reviews: Review[]; summary: ReviewSummary | null; proposals: Proposal[]; edges: GraphEdge[]; flags: ReviewFlag[] }

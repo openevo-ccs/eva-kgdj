@@ -3,7 +3,7 @@
 //   mockApi.ts     — in-memory, seeded from src/mock/graph.json, for UI work
 //                    and screenshot tests without a project (VITE_KGDJ_MODE=mock)
 import type {
-  Citation, CohortStats, ConsentPurpose, Decision, Department, EdgeDetail, EditorialDecision, GraphEdge, GraphNode, LeaderboardRow, Module, ModuleMemberRole, NodeDetail,
+  Citation, CohortStats, CommonsItem, ConsentPurpose, Decision, Department, EdgeDetail, EditorialDecision, GraphEdge, GraphNode, LeaderboardRow, Module, ModuleMemberRole, NodeDetail,
   PrivateNode, PrivateNodeType, Profile, Proposal, ProposalDetail, ProposalStatus, Rating, ResearchGroup, Review, ReviewFlag, ReviewSummary,
   ReviewTarget, Session, Subgraph, SubgraphDetail, SubgraphLink, Visibility, ChangeType,
 } from "./types";
@@ -14,7 +14,7 @@ export interface CitationInput { doi?: string | null; pure_handle?: string | nul
 export interface ReviewInput { target_kind: ReviewTarget; target_id: string; rating: Rating; commentary_md: string; week?: number | null }
 export interface DecisionInput { proposal_id?: string | null; node_id?: string | null; edge_id?: string | null; decision: Decision; feedback?: string }
 export interface ProfilePatch { full_name?: string | null; department_id?: string | null; research_group_id?: string | null; affiliation_note?: string | null }
-export interface ForkItem { node_id: string; annotation: string; week: number | null }
+export interface ForkItem { node_id: string; annotation: string }
 
 export interface Api {
   readonly mode: "supabase" | "mock";
@@ -62,22 +62,26 @@ export interface Api {
   createSubgraph(title: string, module_id: string | null): Promise<Subgraph>;
   updateSubgraph(id: string, patch: { title?: string; description?: string; last_checkpoint_week?: number | null }): Promise<void>;
   deleteSubgraph(id: string): Promise<void>;
-  forkNode(subgraph_id: string, node_id: string, annotation: string, week: number | null): Promise<void>;
+  forkNode(subgraph_id: string, node_id: string, annotation: string): Promise<void>;
   forkNodes(subgraph_id: string, items: ForkItem[]): Promise<void>;
-  updateAnnotation(subgraph_id: string, node_id: string, annotation: string, week: number | null): Promise<void>;
+  updateAnnotation(subgraph_id: string, node_id: string, annotation: string): Promise<void>;
   removeNode(subgraph_id: string, node_id: string): Promise<void>;
-  addPrivateNode(subgraph_id: string, node_type: PrivateNodeType, label: string, source: string | null, week: number | null): Promise<PrivateNode>;
-  updatePrivateNode(id: string, patch: { label?: string; source?: string | null; node_type?: PrivateNodeType; created_week?: number | null }): Promise<void>;
+  setNodeShared(subgraph_id: string, node_id: string, shared: boolean): Promise<void>;
+  addPrivateNode(subgraph_id: string, node_type: PrivateNodeType, label: string, source: string | null): Promise<PrivateNode>;
+  updatePrivateNode(id: string, patch: { label?: string; source?: string | null; node_type?: PrivateNodeType }): Promise<void>;
   removePrivateNode(id: string): Promise<void>;
-  addLink(l: Omit<SubgraphLink, "id">): Promise<void>;
-  addLinks(ls: Omit<SubgraphLink, "id">[]): Promise<void>;
-  updateLink(id: string, patch: { why?: string; lens?: string | null; created_week?: number | null }): Promise<void>;
+  setPrivateNodeShared(id: string, shared: boolean): Promise<void>;
+  addLink(l: Omit<SubgraphLink, "id" | "created_at" | "updated_at" | "shared" | "shared_at">): Promise<void>;
+  addLinks(ls: Omit<SubgraphLink, "id" | "created_at" | "updated_at" | "shared" | "shared_at">[]): Promise<void>;
+  updateLink(id: string, patch: { why?: string; lens?: string | null }): Promise<void>;
   removeLink(id: string): Promise<void>;
+  setLinkShared(id: string, shared: boolean): Promise<void>;
   savePositions(subgraph_id: string, positions: { node_id?: string; private_id?: string; x: number; y: number }[]): Promise<void>;
   setVisibility(subgraph_id: string, v: Visibility): Promise<void>;
   share(subgraph_id: string, username: string): Promise<void>;
   importPortfolio(b: PortfolioBackup, title: string, module_id: string | null): Promise<Subgraph>;
   cohortStats(scope: "module" | "program" | "members", module_id?: string | null): Promise<CohortStats>;
+  commonsItems(module_id?: string | null): Promise<CommonsItem[]>;
   // account
   leaderboard(): Promise<LeaderboardRow[]>;
   consents(): Promise<Record<ConsentPurpose, boolean>>;

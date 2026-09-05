@@ -6,7 +6,7 @@ import type { Api, CitationInput, DecisionInput, ForkItem, ProfilePatch, Proposa
 import type { PortfolioBackup } from "./backup";
 import { portfolioMetrics } from "./report";
 import type {
-  Citation, CohortStats, ConsentPurpose, Department, EdgeDetail, EditorialDecision, GraphEdge, GraphNode, LeaderboardRow, MetricKey, Module, ModuleMemberRole, NodeDetail, PrivateNode, PrivateNodeType,
+  Citation, CohortStats, CommonsItem, ConsentPurpose, Department, EdgeDetail, EditorialDecision, GraphEdge, GraphNode, LeaderboardRow, MetricKey, Module, ModuleMemberRole, NodeDetail, PrivateNode, PrivateNodeType,
   Profile, Proposal, ProposalDetail, ProposalStatus, ResearchGroup, Review, ReviewFlag, ReviewSummary, ReviewTarget, Session, Subgraph, SubgraphDetail, SubgraphLink, SubgraphNode, Visibility,
 } from "./types";
 
@@ -108,27 +108,31 @@ export class MockApi implements Api {
     this.reviews.push({ id: "r-demo-3", target_kind: "proposal", proposal_id: p2, node_id: null, edge_id: null, subgraph_id: null, reviewer_id: "u-peer2", reviewer_username: "dana", reviewer_active: true, rating: "accept", commentary_md: "The direction of the edge is right; label it 'frames'.", week: null, created_at: now() });
     this.reviews.push({ id: "r-demo-4", target_kind: "proposal", proposal_id: p3, node_id: null, edge_id: null, subgraph_id: null, reviewer_id: "u-peer2", reviewer_username: "dana", reviewer_active: true, rating: "reject", commentary_md: "Not a duplicate: the HBEC node is about field measures of cooperation, the cross-department one about the concept. Keep both, add an edge.", week: null, created_at: now() });
     // peer portfolios (private; count for cohort statistics and the leaderboard only)
-    const mk = (owner: string, title: string, slugs: string[], own: [PrivateNodeType, string][], links: [number, number, string, string | null, number][], ann: string[]) => {
+    const day = (offset: number) => new Date(Date.now() - offset * 86400000).toISOString();
+    const mk = (owner: string, title: string, slugs: string[], own: [PrivateNodeType, string][], links: [number, number, string, string | null, number][], ann: string[], sharedIdx: { node?: number; own?: number; link?: number } = {}) => {
       const g: Subgraph = { id: nid("g"), owner_id: owner, module_id: MODULE.id, title, description: "", visibility: "private", last_checkpoint_week: null, created_at: now() };
       this.sgList.push(g);
       const ids: string[] = [];
-      slugs.forEach((s, i) => { const n = bySlug(s); ids.push(n.id); this.sgNodes.push({ subgraph_id: g.id, node_id: n.id, custom_annotation: ann[i] || "", pos_x: null, pos_y: null, added_week: 1 + (i % 3) }); });
-      own.forEach(([t, l], i) => { const p: PrivateNode = { id: nid("pn"), subgraph_id: g.id, node_type: t, label: l, source: null, origin: null, created_week: 1 + (i % 4), pos_x: null, pos_y: null }; this.privNodes.push(p); ids.push(p.id); });
-      links.forEach(([a, b, why, lens, wk]) => { const fa = a >= slugs.length, fb = b >= slugs.length; this.links.push({ id: nid("l"), subgraph_id: g.id, from_node_id: fa ? null : ids[a], from_private_id: fa ? ids[a] : null, to_node_id: fb ? null : ids[b], to_private_id: fb ? ids[b] : null, why, lens, created_week: wk, edge_id: null }); });
+      slugs.forEach((s, i) => { const n = bySlug(s); ids.push(n.id); const at = day(12 - i * 3); this.sgNodes.push({ subgraph_id: g.id, node_id: n.id, custom_annotation: ann[i] || "", pos_x: null, pos_y: null, added_week: null, added_at: at, updated_at: at, shared: sharedIdx.node === i, shared_at: sharedIdx.node === i ? at : null }); });
+      own.forEach(([t, l], i) => { const at = day(10 - i * 2); const p: PrivateNode = { id: nid("pn"), subgraph_id: g.id, node_type: t, label: l, source: null, origin: null, created_week: null, pos_x: null, pos_y: null, created_at: at, updated_at: at, shared: sharedIdx.own === i, shared_at: sharedIdx.own === i ? at : null }; this.privNodes.push(p); ids.push(p.id); });
+      links.forEach(([a, b, why, lens], i) => { const fa = a >= slugs.length, fb = b >= slugs.length; const at = day(8 - i); this.links.push({ id: nid("l"), subgraph_id: g.id, from_node_id: fa ? null : ids[a], from_private_id: fa ? ids[a] : null, to_node_id: fb ? null : ids[b], to_private_id: fb ? ids[b] : null, why, lens, created_week: null, edge_id: null, created_at: at, updated_at: at, shared: sharedIdx.link === i, shared_at: sharedIdx.link === i ? at : null }); });
       return g;
     };
     mk("u-student2", "Bob: apes, teaching, culture", ["ccp-theory-theory-of-mind", "primevo-topic-chimpanzee-cultural-diversity", "hbec-topic-cooperation", "ccp-method-eye-tracking"],
       [["self", "me"], ["question", "Do apes teach on purpose?"], ["resource", "Whiten 1999 Nature"]],
       [[4, 0, "I keep coming back to whether reading minds is needed for teaching, which is the hinge of my question.", "mechanism", 1], [5, 1, "My question is really a question about chimpanzee cultural transmission.", "theory", 2], [1, 2, "Cooperation field data from HBEC would let me test whether teaching co-varies with cooperation norms.", "evidence", 3], [6, 1, "The Whiten paper is the classic cultures-in-chimpanzees evidence base.", "evidence", 2]],
-      ["Core mechanism, but I doubt apes need full ToM for teaching.", "Cultural variants across communities: my empirical anchor.", "", "Could use gaze-following as a proxy for attention to demonstrators."]);
+      ["Core mechanism, but I doubt apes need full ToM for teaching.", "Cultural variants across communities: my empirical anchor.", "", "Could use gaze-following as a proxy for attention to demonstrators."],
+      { own: 1 });
     mk("u-peer1", "Chen: language and cognition", ["dlce-theory-language-evolution", "ccp-theory-social-cognition", "ccp-theory-theory-of-mind", "dag-theory-population-genetics", "humor-domain-stone-tools", "hbec-theory-cultural-evolution"],
       [["self", "me"], ["question", "Did language need theory of mind, or the reverse?"], ["theory", "Ostensive communication (Sperber & Wilson)"], ["method", "Cross-linguistic phylogenetics"]],
       [[6, 1, "The ostensive-inferential model says communication presupposes intention-reading, which is what social cognition studies.", "theory", 1], [7, 0, "Relevance theory is the bridge between the pragmatic and the cognitive accounts here.", "theory", 2], [0, 5, "Language change is a case of cultural evolution; the HBEC models should apply to phonology.", "mechanism", 2], [3, 0, "Population genetics gives the formal tools that language phylogenetics borrowed.", "method", 3], [4, 0, "Tool traditions are the earliest evidence of cumulative culture, and cumulative culture is where language might have paid off.", "evidence", 4], [9, 0, "My method node is how I would test any of this.", "method", 4]],
-      ["My home base: whether language is a product or a driver of social cognition.", "Mind-reading as the substrate of communication.", "The developmental data that anchors the cognitive side.", "Formal models I need to learn to read the phylogenetic work.", "Deep-time evidence; I want to know what tools say about teaching.", "Framework for treating language change as an evolutionary process."]);
+      ["My home base: whether language is a product or a driver of social cognition.", "Mind-reading as the substrate of communication.", "The developmental data that anchors the cognitive side.", "Formal models I need to learn to read the phylogenetic work.", "Deep-time evidence; I want to know what tools say about teaching.", "Framework for treating language change as an evolutionary process."],
+      { link: 0 });
     mk("u-peer2", "Dana: cooperation across departments", ["hbec-topic-cooperation", "ccp-theory-social-cognition", "primevo-topic-chimpanzee-cultural-diversity"],
       [["self", "me"], ["question", "Is human cooperation unique in kind or only degree?"]],
       [[4, 0, "This is the question the module opened with and I want to keep it in view.", "theory", 1], [0, 2, "Chimpanzee community-level traditions are the comparison case for norms.", "evidence", 2]],
-      ["Field measures of cooperation; I am interested in how they are constructed.", "", "The comparison species case."]);
+      ["Field measures of cooperation; I am interested in how they are constructed.", "", "The comparison species case."],
+      { own: 1 });
     this.reviews.push({ id: "r-demo-5", target_kind: "subgraph", proposal_id: null, node_id: null, edge_id: null, subgraph_id: this.sgList[1].id, reviewer_id: "u-peer2", reviewer_username: "dana", reviewer_active: true, rating: "accept", commentary_md: "Your theory chain is strong; the evidence side is thin — add one empirical node per theory.", week: 3, created_at: now() });
   }
   private decorate(rs: Review[]): Review[] { return rs.map((r) => ({ ...r, helpful_count: this.helpful.filter((h) => h.review_id === r.id).length, helpful_by_me: this.helpful.some((h) => h.review_id === r.id && h.voter_id === this.me_.id) })); }
@@ -243,27 +247,45 @@ export class MockApi implements Api {
     const summaries: Record<string, ReviewSummary> = {}; for (const p of proposals) { const s = this.summarize("proposal", p.id); if (s) summaries[p.id] = s; }
     return { proposals, summaries };
   }
-  private canSeeSubgraph(g: Subgraph) { return g.owner_id === this.me_.id || this.isInstructor() || this.shares.some((s) => s.subgraph_id === g.id && s.profile_id === this.me_.id) || g.visibility === "members" || (g.visibility === "module" && this.members.some((m) => m.profile_id === this.me_.id && m.module_id === g.module_id)); }
+  private isModuleMemberOf(module_id: string | null) { return !!module_id && this.members.some((m) => m.profile_id === this.me_.id && m.module_id === module_id); }
+  private canSeeSubgraph(g: Subgraph) { return g.owner_id === this.me_.id || this.isInstructor() || this.shares.some((s) => s.subgraph_id === g.id && s.profile_id === this.me_.id) || g.visibility === "members" || (g.visibility === "module" && this.isModuleMemberOf(g.module_id)); }
+  // Per-item "share with my module" (0006): the parent portfolio becomes visible (metadata
+  // only, via this check) once at least one of its rows is shared — mirrors
+  // kgdj.subgraph_visible_via_shared_item. Row-level filtering happens in subgraph() below.
+  private visibleViaSharedItem(g: Subgraph) {
+    if (!this.isModuleMemberOf(g.module_id)) return false;
+    return this.sgNodes.some((n) => n.subgraph_id === g.id && n.shared) || this.privNodes.some((n) => n.subgraph_id === g.id && n.shared) || this.links.some((l) => l.subgraph_id === g.id && l.shared);
+  }
   private owns(id: string) { const g = this.sgList.find((x) => x.id === id); if (!g || g.owner_id !== this.me_.id) throw new Error("not your portfolio"); return g; }
-  async subgraphs() { return this.sgList.filter((g) => this.canSeeSubgraph(g)); }
+  async subgraphs() { return this.sgList.filter((g) => this.canSeeSubgraph(g) || this.visibleViaSharedItem(g)); }
   async subgraph(id: string): Promise<SubgraphDetail> {
-    const subgraph = this.sgList.find((g) => g.id === id); if (!subgraph || !this.canSeeSubgraph(subgraph)) throw new Error("portfolio not found or not visible");
-    return { subgraph, nodes: this.sgNodes.filter((n) => n.subgraph_id === id), privateNodes: this.privNodes.filter((n) => n.subgraph_id === id), links: this.links.filter((l) => l.subgraph_id === id), reviews: this.decorate(this.reviews.filter((r) => r.subgraph_id === id)) };
+    const subgraph = this.sgList.find((g) => g.id === id); if (!subgraph) throw new Error("portfolio not found or not visible");
+    const full = this.canSeeSubgraph(subgraph);
+    if (!full && !this.visibleViaSharedItem(subgraph)) throw new Error("portfolio not found or not visible");
+    const canRow = (r: { shared: boolean }) => full || (r.shared && this.isModuleMemberOf(subgraph.module_id));
+    return {
+      subgraph, full_access: full,
+      nodes: this.sgNodes.filter((n) => n.subgraph_id === id && canRow(n)), privateNodes: this.privNodes.filter((n) => n.subgraph_id === id && canRow(n)), links: this.links.filter((l) => l.subgraph_id === id && canRow(l)),
+      reviews: full ? this.decorate(this.reviews.filter((r) => r.subgraph_id === id)) : [],
+    };
   }
   async createSubgraph(title: string, module_id: string | null) { const g: Subgraph = { id: nid("g"), owner_id: this.me_.id, module_id, title, description: "", visibility: "private", last_checkpoint_week: null, created_at: now() }; this.sgList.push(g); return g; }
   async updateSubgraph(id: string, patch: { title?: string; description?: string; last_checkpoint_week?: number | null }) { Object.assign(this.owns(id), patch); }
   async deleteSubgraph(id: string) { this.owns(id); this.sgList = this.sgList.filter((g) => g.id !== id); this.sgNodes = this.sgNodes.filter((n) => n.subgraph_id !== id); this.privNodes = this.privNodes.filter((n) => n.subgraph_id !== id); this.links = this.links.filter((l) => l.subgraph_id !== id); }
-  async forkNode(subgraph_id: string, node_id: string, annotation: string, week: number | null) { this.owns(subgraph_id); const ex = this.sgNodes.find((n) => n.subgraph_id === subgraph_id && n.node_id === node_id); if (ex) { if (annotation) ex.custom_annotation = annotation; return; } this.sgNodes.push({ subgraph_id, node_id, custom_annotation: annotation, pos_x: null, pos_y: null, added_week: week }); }
-  async forkNodes(subgraph_id: string, items: ForkItem[]) { for (const it of items) await this.forkNode(subgraph_id, it.node_id, it.annotation, it.week); }
-  async updateAnnotation(subgraph_id: string, node_id: string, annotation: string, week: number | null) { this.owns(subgraph_id); const n = this.sgNodes.find((x) => x.subgraph_id === subgraph_id && x.node_id === node_id); if (n) { n.custom_annotation = annotation; n.added_week = week; } }
+  async forkNode(subgraph_id: string, node_id: string, annotation: string) { this.owns(subgraph_id); const ex = this.sgNodes.find((n) => n.subgraph_id === subgraph_id && n.node_id === node_id); if (ex) { if (annotation) { ex.custom_annotation = annotation; ex.updated_at = now(); } return; } this.sgNodes.push({ subgraph_id, node_id, custom_annotation: annotation, pos_x: null, pos_y: null, added_week: null, added_at: now(), updated_at: now(), shared: false, shared_at: null }); }
+  async forkNodes(subgraph_id: string, items: ForkItem[]) { for (const it of items) await this.forkNode(subgraph_id, it.node_id, it.annotation); }
+  async updateAnnotation(subgraph_id: string, node_id: string, annotation: string) { this.owns(subgraph_id); const n = this.sgNodes.find((x) => x.subgraph_id === subgraph_id && x.node_id === node_id); if (n) { n.custom_annotation = annotation; n.updated_at = now(); } }
   async removeNode(subgraph_id: string, node_id: string) { this.owns(subgraph_id); this.sgNodes = this.sgNodes.filter((x) => !(x.subgraph_id === subgraph_id && x.node_id === node_id)); this.links = this.links.filter((l) => l.subgraph_id !== subgraph_id || (l.from_node_id !== node_id && l.to_node_id !== node_id)); }
-  async addPrivateNode(subgraph_id: string, node_type: PrivateNodeType, label: string, source: string | null, week: number | null) { this.owns(subgraph_id); const n: PrivateNode = { id: nid("pn"), subgraph_id, node_type, label, source, origin: null, created_week: week, pos_x: null, pos_y: null }; this.privNodes.push(n); return n; }
-  async updatePrivateNode(id: string, patch: { label?: string; source?: string | null; node_type?: PrivateNodeType; created_week?: number | null }) { const n = this.privNodes.find((x) => x.id === id); if (!n) return; this.owns(n.subgraph_id); Object.assign(n, patch); }
+  async setNodeShared(subgraph_id: string, node_id: string, shared: boolean) { this.owns(subgraph_id); const n = this.sgNodes.find((x) => x.subgraph_id === subgraph_id && x.node_id === node_id); if (n) { n.shared = shared; n.shared_at = shared ? now() : null; } }
+  async addPrivateNode(subgraph_id: string, node_type: PrivateNodeType, label: string, source: string | null) { this.owns(subgraph_id); const n: PrivateNode = { id: nid("pn"), subgraph_id, node_type, label, source, origin: null, created_week: null, pos_x: null, pos_y: null, created_at: now(), updated_at: now(), shared: false, shared_at: null }; this.privNodes.push(n); return n; }
+  async updatePrivateNode(id: string, patch: { label?: string; source?: string | null; node_type?: PrivateNodeType }) { const n = this.privNodes.find((x) => x.id === id); if (!n) return; this.owns(n.subgraph_id); Object.assign(n, patch); n.updated_at = now(); }
   async removePrivateNode(id: string) { const n = this.privNodes.find((x) => x.id === id); if (!n) return; this.owns(n.subgraph_id); this.privNodes = this.privNodes.filter((x) => x.id !== id); this.links = this.links.filter((l) => l.from_private_id !== id && l.to_private_id !== id); }
-  async addLink(l: Omit<SubgraphLink, "id">) { this.owns(l.subgraph_id); if (l.why.length < 10) throw new Error("The 'because' needs at least 10 characters"); this.links.push({ id: nid("l"), edge_id: null, ...l }); }
-  async addLinks(ls: Omit<SubgraphLink, "id">[]) { for (const l of ls) await this.addLink(l); }
-  async updateLink(id: string, patch: { why?: string; lens?: string | null; created_week?: number | null }) { const l = this.links.find((x) => x.id === id); if (!l) return; this.owns(l.subgraph_id); if (patch.why != null && patch.why.length < 10) throw new Error("The 'because' needs at least 10 characters"); Object.assign(l, patch); }
+  async setPrivateNodeShared(id: string, shared: boolean) { const n = this.privNodes.find((x) => x.id === id); if (!n) return; this.owns(n.subgraph_id); n.shared = shared; n.shared_at = shared ? now() : null; }
+  async addLink(l: Omit<SubgraphLink, "id" | "created_at" | "updated_at" | "shared" | "shared_at">) { this.owns(l.subgraph_id); if (l.why.length < 10) throw new Error("The 'because' needs at least 10 characters"); this.links.push({ id: nid("l"), edge_id: null, created_at: now(), updated_at: now(), shared: false, shared_at: null, ...l }); }
+  async addLinks(ls: Omit<SubgraphLink, "id" | "created_at" | "updated_at" | "shared" | "shared_at">[]) { for (const l of ls) await this.addLink(l); }
+  async updateLink(id: string, patch: { why?: string; lens?: string | null }) { const l = this.links.find((x) => x.id === id); if (!l) return; this.owns(l.subgraph_id); if (patch.why != null && patch.why.length < 10) throw new Error("The 'because' needs at least 10 characters"); Object.assign(l, patch); l.updated_at = now(); }
   async removeLink(id: string) { const l = this.links.find((x) => x.id === id); if (!l) return; this.owns(l.subgraph_id); this.links = this.links.filter((x) => x.id !== id); }
+  async setLinkShared(id: string, shared: boolean) { const l = this.links.find((x) => x.id === id); if (!l) return; this.owns(l.subgraph_id); l.shared = shared; l.shared_at = shared ? now() : null; }
   async savePositions(subgraph_id: string, positions: { node_id?: string; private_id?: string; x: number; y: number }[]) {
     for (const p of positions) { const t = p.node_id ? this.sgNodes.find((n) => n.subgraph_id === subgraph_id && n.node_id === p.node_id) : this.privNodes.find((n) => n.id === p.private_id); if (t) { t.pos_x = p.x; t.pos_y = p.y; } }
   }
@@ -272,26 +294,41 @@ export class MockApi implements Api {
   async importPortfolio(b: PortfolioBackup, title: string, module_id: string | null) {
     const r = await this.data(); const g = await this.createSubgraph(title, module_id);
     const bySlug = Object.fromEntries(r.nodes.map((n) => [n.slug, n.id])); const map: Record<string, string> = {};
-    for (const n of b.nodes) { const id = (n.slug && bySlug[n.slug]) || (r.nodes.some((x) => x.id === n.node_id) ? n.node_id : null); if (!id) continue; map[n.node_id] = id; this.sgNodes.push({ subgraph_id: g.id, node_id: id, custom_annotation: n.custom_annotation || "", pos_x: n.pos_x, pos_y: n.pos_y, added_week: n.added_week }); }
-    for (const p of b.private_nodes) { const np = await this.addPrivateNode(g.id, p.node_type, p.label, p.source, p.created_week); np.pos_x = p.pos_x; np.pos_y = p.pos_y; map[p.id] = np.id; }
-    for (const l of b.links) { const f = l.from_node_id ? map[l.from_node_id] : map[l.from_private_id!], t = l.to_node_id ? map[l.to_node_id] : map[l.to_private_id!]; if (!f || !t) continue; this.links.push({ id: nid("l"), subgraph_id: g.id, from_node_id: l.from_node_id ? f : null, from_private_id: l.from_private_id ? f : null, to_node_id: l.to_node_id ? t : null, to_private_id: l.to_private_id ? t : null, why: l.why, lens: l.lens, created_week: l.created_week, edge_id: l.edge_id && r.edges.some((e) => e.id === l.edge_id) ? l.edge_id : null }); }
+    for (const n of b.nodes) { const id = (n.slug && bySlug[n.slug]) || (r.nodes.some((x) => x.id === n.node_id) ? n.node_id : null); if (!id) continue; map[n.node_id] = id; const at = n.added_at || now(); this.sgNodes.push({ subgraph_id: g.id, node_id: id, custom_annotation: n.custom_annotation || "", pos_x: n.pos_x, pos_y: n.pos_y, added_week: null, added_at: at, updated_at: n.updated_at || at, shared: false, shared_at: null }); }
+    for (const p of b.private_nodes) { const np = await this.addPrivateNode(g.id, p.node_type, p.label, p.source); np.pos_x = p.pos_x; np.pos_y = p.pos_y; if (p.created_at) { np.created_at = p.created_at; np.updated_at = p.updated_at || p.created_at; } map[p.id] = np.id; }
+    for (const l of b.links) { const f = l.from_node_id ? map[l.from_node_id] : map[l.from_private_id!], t = l.to_node_id ? map[l.to_node_id] : map[l.to_private_id!]; if (!f || !t) continue; const at = l.created_at || now(); this.links.push({ id: nid("l"), subgraph_id: g.id, from_node_id: l.from_node_id ? f : null, from_private_id: l.from_private_id ? f : null, to_node_id: l.to_node_id ? t : null, to_private_id: l.to_private_id ? t : null, why: l.why, lens: l.lens, created_week: null, edge_id: l.edge_id && r.edges.some((e) => e.id === l.edge_id) ? l.edge_id : null, created_at: at, updated_at: l.updated_at || at, shared: false, shared_at: null }); }
     return g;
   }
   async cohortStats(scope: "module" | "program" | "members", module_id?: string | null): Promise<CohortStats> {
     const r = await this.data(); const byId = Object.fromEntries(r.nodes.map((n) => [n.id, n]));
     const ids = this.sgList.filter((g) => scope === "members" ? true : scope === "program" ? EVERYONE.find((p) => p.id === g.owner_id)?.role === "msc_student" : g.module_id === (module_id ?? MODULE.id)).map((g) => g.id);
     if (ids.length < 3) return { scope, n: ids.length, metrics: null, reason: "fewer than 3 portfolios in scope; no aggregates released" };
-    const ms = ids.map((id) => portfolioMetrics({ subgraph: this.sgList.find((g) => g.id === id)!, nodes: this.sgNodes.filter((n) => n.subgraph_id === id), privateNodes: this.privNodes.filter((n) => n.subgraph_id === id), links: this.links.filter((l) => l.subgraph_id === id), reviews: this.reviews.filter((x) => x.subgraph_id === id) }, byId));
+    const ms = ids.map((id) => portfolioMetrics({ subgraph: this.sgList.find((g) => g.id === id)!, nodes: this.sgNodes.filter((n) => n.subgraph_id === id), privateNodes: this.privNodes.filter((n) => n.subgraph_id === id), links: this.links.filter((l) => l.subgraph_id === id), reviews: this.reviews.filter((x) => x.subgraph_id === id), full_access: true }, byId));
     const metrics: CohortStats["metrics"] = {};
     for (const k of Object.keys(ms[0]) as MetricKey[]) { const vs = ms.map((m) => m[k]); metrics[k] = { mean: Math.round((vs.reduce((a, b) => a + b, 0) / vs.length) * 10) / 10, median: median(vs), p75: quantile(vs, 0.75), max: Math.max(...vs) }; }
     return { scope, n: ids.length, metrics };
+  }
+  async commonsItems(module_id?: string | null): Promise<CommonsItem[]> {
+    const r = await this.data(); const byId = Object.fromEntries(r.nodes.map((n) => [n.id, n]));
+    const myModuleIds = new Set(this.members.filter((m) => m.profile_id === this.me_.id).map((m) => m.module_id));
+    const relevant = this.sgList.filter((g) => g.module_id && myModuleIds.has(g.module_id) && (!module_id || g.module_id === module_id));
+    const label = (nid: string | null, pid: string | null) => nid ? byId[nid]?.label ?? nid : (this.privNodes.find((p) => p.id === pid)?.label ?? pid ?? "?");
+    const out: CommonsItem[] = [];
+    for (const g of relevant) {
+      const owner = EVERYONE.find((p) => p.id === g.owner_id)?.username ?? "member";
+      for (const n of this.sgNodes.filter((x) => x.subgraph_id === g.id && x.shared)) { const node = byId[n.node_id]; out.push({ kind: "node", subgraph_id: g.id, subgraph_title: g.title, owner_username: owner, module_name: MODULE.name, shared_at: n.shared_at || n.added_at, label: node?.label ?? n.node_id, sub_label: n.custom_annotation || undefined, node_id: n.node_id }); }
+      for (const p of this.privNodes.filter((x) => x.subgraph_id === g.id && x.shared)) out.push({ kind: "private_node", subgraph_id: g.id, subgraph_title: g.title, owner_username: owner, module_name: MODULE.name, shared_at: p.shared_at || p.created_at, label: p.label, sub_label: p.node_type });
+      for (const l of this.links.filter((x) => x.subgraph_id === g.id && x.shared)) out.push({ kind: "link", subgraph_id: g.id, subgraph_title: g.title, owner_username: owner, module_name: MODULE.name, shared_at: l.shared_at || l.created_at, label: l.why, sub_label: `${label(l.from_node_id, l.from_private_id)} → ${label(l.to_node_id, l.to_private_id)}` });
+    }
+    return out.sort((a, b) => b.shared_at.localeCompare(a.shared_at));
   }
   private rowFor(p: Profile): LeaderboardRow {
     const r = this.raw!; const byId = Object.fromEntries(r.nodes.map((n) => [n.id, n]));
     const mine = this.sgList.filter((g) => g.owner_id === p.id).map((g) => g.id);
     const sn = this.sgNodes.filter((n) => mine.includes(n.subgraph_id)), pn = this.privNodes.filter((n) => mine.includes(n.subgraph_id)), ls = this.links.filter((l) => mine.includes(l.subgraph_id));
     const rv = this.reviews.filter((x) => x.reviewer_id === p.id);
-    const weeks = new Set<number>(); ls.forEach((l) => l.created_week && weeks.add(l.created_week)); pn.forEach((n) => n.created_week && weeks.add(n.created_week)); sn.forEach((n) => n.added_week && weeks.add(n.added_week)); rv.forEach((x) => x.week && weeks.add(x.week));
+    const day = (iso: string) => iso.slice(0, 10);
+    const days = new Set<string>(); ls.forEach((l) => days.add(day(l.created_at))); pn.forEach((n) => days.add(day(n.created_at))); sn.forEach((n) => days.add(day(n.added_at))); rv.forEach((x) => days.add(day(x.created_at)));
     const approved = this.propList.filter((x) => x.proposer_id === p.id && x.status === "approved");
     return { profile_id: p.id, username: p.username, role: p.role, department: p.department_id ? r.departments.find((d) => d.id === p.department_id)?.abbr ?? null : null,
       approved_proposals: approved.length, open_proposals: this.propList.filter((x) => x.proposer_id === p.id && ["pending", "under_review", "revision_requested"].includes(x.status)).length,
@@ -302,7 +339,7 @@ export class MockApi implements Api {
       substantive_reviews: rv.filter((x) => x.commentary_md.length >= 300).length,
       annotated_nodes: sn.filter((n) => n.custom_annotation.length >= 40).length, annotation_chars: sn.reduce((a, n) => a + n.custom_annotation.length, 0),
       connections_written: ls.length, cross_dept_connections: ls.filter((l) => { const a = l.from_node_id ? byId[l.from_node_id] : null, b = l.to_node_id ? byId[l.to_node_id] : null; return a?.department_id && b?.department_id && a.department_id !== b.department_id; }).length,
-      lenses_used: new Set(ls.map((l) => (l.lens || "").trim()).filter(Boolean)).size, questions_raised: pn.filter((n) => n.node_type === "question").length, resources_added: pn.filter((n) => n.node_type === "resource").length, active_weeks: weeks.size };
+      lenses_used: new Set(ls.map((l) => (l.lens || "").trim()).filter(Boolean)).size, questions_raised: pn.filter((n) => n.node_type === "question").length, resources_added: pn.filter((n) => n.node_type === "resource").length, active_days: days.size };
   }
   async leaderboard(): Promise<LeaderboardRow[]> {
     await this.data();

@@ -7,6 +7,7 @@ import ProposalsPage, { NewProposalPage } from "./pages/ProposalsPage";
 import ProposalPage from "./pages/ProposalPage";
 import EditorialPage from "./pages/EditorialPage";
 import PortfolioPage from "./pages/PortfolioPage";
+import CommonsPage from "./pages/CommonsPage";
 import LeaderboardPage from "./pages/LeaderboardPage";
 import AccountPage from "./pages/AccountPage";
 import { Tour, tourDone } from "./components/Tour";
@@ -14,6 +15,7 @@ import { Tip } from "./components/Tip";
 
 const NAV_TIP: Record<string, string> = {
   explore: "The canonical, peer-reviewed graph of the institute's research", proposals: "Propose and review changes to the canonical graph", portfolio: "Your own orientation graph, built on the canonical one",
+  commons: "Ideas classmates shared with your module — one node, connection, or cluster at a time",
   editorial: "Editors: decide on proposals and promote reviewed seed nodes", leaderboard: "Many boards for many strengths — opt in from Account", account: "Affiliation, consent, data export, deletion",
 };
 
@@ -34,6 +36,7 @@ export default function App() {
           <Tip text={NAV_TIP.explore} place="bottom"><NavLink to="/explore" data-tour="nav-explore">Graph</NavLink></Tip>
           <Tip text={NAV_TIP.proposals} place="bottom"><NavLink to="/proposals" data-tour="nav-proposals">Proposals</NavLink></Tip>
           <Tip text={NAV_TIP.portfolio} place="bottom"><NavLink to="/portfolio" data-tour="nav-portfolio">Portfolio</NavLink></Tip>
+          <Tip text={NAV_TIP.commons} place="bottom"><NavLink to="/commons" data-tour="nav-commons">Commons</NavLink></Tip>
           {isEditor(profile) && <Tip text={NAV_TIP.editorial} place="bottom"><NavLink to="/editorial">Editorial</NavLink></Tip>}
           <Tip text={NAV_TIP.leaderboard} place="bottom"><NavLink to="/leaderboard" data-tour="nav-leaderboard">Leaderboards</NavLink></Tip>
           <Tip text={NAV_TIP.account} place="bottom"><NavLink to="/account" data-tour="nav-account">Account</NavLink></Tip>
@@ -63,6 +66,7 @@ export default function App() {
           <Route path="/editorial" element={isEditor(profile) ? <EditorialPage /> : <Navigate to="/explore" replace />} />
           <Route path="/portfolio" element={<PortfolioPage />} />
           <Route path="/portfolio/:id" element={<PortfolioPage />} />
+          <Route path="/commons" element={<CommonsPage />} />
           <Route path="/leaderboard" element={<LeaderboardPage />} />
           <Route path="/account" element={<AccountPage />} />
         </Routes>

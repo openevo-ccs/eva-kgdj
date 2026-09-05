@@ -66,15 +66,13 @@ function AddPanel({ node, subgraphs, inPortfolio, onDone, myModuleId }: { node: 
   const [target, setTarget] = useState<string>(mine[0]?.id ?? "new");
   const [title, setTitle] = useState("My orientation graph");
   const [annotation, setAnnotation] = useState("");
-  const [week, setWeek] = useState<number | "">("");
   useEffect(() => { if (mine.length && target === "new") setTarget(mine[0].id); }, [subgraphs]);
   return (
-    <form onSubmit={async (e) => { e.preventDefault(); let id = target; if (id === "new") id = (await api.createSubgraph(title, myModuleId)).id; await api.forkNode(id, node.id, annotation, week === "" ? null : Number(week)); onDone(`Added "${node.label}" to your portfolio.`); }}>
+    <form onSubmit={async (e) => { e.preventDefault(); let id = target; if (id === "new") id = (await api.createSubgraph(title, myModuleId)).id; await api.forkNode(id, node.id, annotation); onDone(`Added "${node.label}" to your portfolio.`); }}>
       {inPortfolio && <div className="notice">Already in one of your portfolios — adding again updates the annotation if you write one.</div>}
       <div className="field"><label>Portfolio <Help text="Your orientation graph for the module. You can keep several, but one is usual." /></label><select value={target} onChange={(e) => setTarget(e.target.value)}>{mine.map((g) => <option key={g.id} value={g.id}>{g.title}</option>)}<option value="new">+ new portfolio…</option></select></div>
       {target === "new" && <div className="field"><label>Title</label><input value={title} onChange={(e) => setTitle(e.target.value)} /></div>}
       <div className="field"><label>Your annotation <Help text="Why this node matters to you, in your own words. Annotations of 40+ characters count as real annotations in your portfolio report." /></label><textarea rows={3} value={annotation} onChange={(e) => setAnnotation(e.target.value)} placeholder="What does this node mean for your own question?" /></div>
-      <div className="field"><label>Module week <Help text="Optional. Tagging additions by week makes your own trajectory visible in the report." /></label><input type="number" min={1} max={15} value={week} onChange={(e) => setWeek(e.target.value === "" ? "" : Number(e.target.value))} style={{ width: 80 }} /></div>
       <button className="btn btn-primary">Add to my portfolio</button>
       <p className="muted" style={{ marginTop: 8 }}>Tip: hold Ctrl and click several nodes in the graph to add a whole cluster at once.</p>
     </form>

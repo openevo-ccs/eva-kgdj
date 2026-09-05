@@ -39,8 +39,8 @@ grant usage on schema auth to authenticated, anon;
 grant execute on function auth.uid() to authenticated, anon;
 """
 
-U = {name: str(uuid.uuid5(uuid.NAMESPACE_DNS, name)) for name in ("alice", "bob", "carla", "eve", "mallory")}
-EMAIL = {"alice": "alice@uni-leipzig.de", "bob": "bob@uni-leipzig.de", "carla": "carla@eva.mpg.de", "eve": "eve@eva.mpg.de", "mallory": "mallory@example.com"}
+U = {name: str(uuid.uuid5(uuid.NAMESPACE_DNS, name)) for name in ("alice", "bob", "carla", "eve", "mallory", "frank")}
+EMAIL = {"alice": "alice@uni-leipzig.de", "bob": "bob@uni-leipzig.de", "carla": "carla@eva.mpg.de", "eve": "eve@eva.mpg.de", "mallory": "mallory@example.com", "frank": "frank@uni-leipzig.de"}
 
 
 class Session:
@@ -82,10 +82,10 @@ def main():
 
     # --- sign-up gate: allowed domains, invite, denial ------------------------
     admin.q("insert into kgdj.allowlist (email, role, institution) values (%s, 'researcher', 'external')", ("mallory@example.com",))  # invited explicitly
-    for name in ("alice", "bob", "carla", "eve", "mallory"):
+    for name in ("alice", "bob", "carla", "eve", "mallory", "frank"):
         admin.q("insert into auth.users (id, email) values (%s, %s)", (U[name], EMAIL[name]))
     admin.q("insert into auth.users (id, email) values (%s, %s)", (str(uuid.uuid4()), "stranger@gmail.com"))
-    assert admin.one("select count(*) from kgdj.profiles") == 5, "stranger must get no profile"
+    assert admin.one("select count(*) from kgdj.profiles") == 6, "stranger must get no profile"
     assert admin.one("select role::text from kgdj.profiles where id = %s", (U["alice"],)) == "msc_student"
     assert admin.one("select role::text from kgdj.profiles where id = %s", (U["carla"],)) == "researcher"
     hook = admin.one("select kgdj.before_user_created(%s::jsonb)", ('{"user":{"email":"x@gmail.com"}}',))
@@ -94,10 +94,10 @@ def main():
     admin.q("update kgdj.profiles set role = 'editor' where id = %s", (U["eve"],))
     admin.q("update kgdj.profiles set role = 'admin' where id = %s", (U["carla"],))
     module_id = admin.one("insert into kgdj.modules (code, name, cohort_year, term, instructor_id) values ('ccp-wise-2026-27','Comparative Cultural Psychology',2026,'WiSe',%s) returning id", (U["carla"],))
-    for s in ("alice", "bob"):
+    for s in ("alice", "bob", "frank"):
         admin.q("insert into kgdj.module_members (module_id, profile_id) values (%s, %s)", (module_id, U[s]))
 
-    alice, bob, carla, eve = (Session(args.dsn, n) for n in ("alice", "bob", "carla", "eve"))
+    alice, bob, carla, eve, frank = (Session(args.dsn, n) for n in ("alice", "bob", "carla", "eve", "frank"))
     anon = Session(args.dsn); anon.q("set role anon")
 
     # --- read visibility --------------------------------------------------------
@@ -187,6 +187,26 @@ def main():
     assert admin.one("select custom_annotation from kgdj.subgraph_nodes where subgraph_id=%s", (sg,)) == "core of my interest"
     print("portfolio visibility/sharing/critique ok")
 
+    # --- 0006: per-item "share with my module", independent of the portfolio's own visibility ---
+    # frank: a plain module peer — not the owner, not explicitly shared-with (unlike bob above), not staff.
+    assert frank.one("select count(*) from kgdj.student_subgraphs where id=%s", (sg,)) == 0, "still private to a plain module peer"
+    before = alice.one("select updated_at from kgdj.subgraph_nodes where subgraph_id=%s and node_id=%s", (sg, tom))
+    alice.q("update kgdj.subgraph_nodes set shared=true, shared_at=now() where subgraph_id=%s and node_id=%s", (sg, tom))
+    after = alice.one("select updated_at from kgdj.subgraph_nodes where subgraph_id=%s and node_id=%s", (sg, tom))
+    assert after > before, "updated_at bumps on edit (0006 touch trigger)"
+    assert frank.one("select count(*) from kgdj.student_subgraphs where id=%s", (sg,)) == 1, "parent portfolio becomes visible (metadata only) once one item is shared"
+    assert frank.one("select node_id from kgdj.subgraph_nodes where subgraph_id=%s", (sg,)) == tom, "sees exactly the shared node — no other row"
+    assert frank.one("select count(*) from kgdj.subgraph_private_nodes where subgraph_id=%s", (sg,)) == 0, "private node stays hidden — sharing one item does not unlock the rest"
+    assert frank.one("select count(*) from kgdj.subgraph_links where subgraph_id=%s", (sg,)) == 0, "the connection stays hidden too"
+    assert frank.one("select count(*) from kgdj.reviews_visible where subgraph_id=%s", (sg,)) == 0, "sharing an item does not open the portfolio's own critique thread"
+    frank.q("update kgdj.subgraph_nodes set shared=false where subgraph_id=%s and node_id=%s", (sg, tom))  # not owner -> 0 rows, no error
+    assert admin.one("select shared from kgdj.subgraph_nodes where subgraph_id=%s and node_id=%s", (sg, tom)) is True, "only the owner can toggle sharing"
+    assert alice.one("select can_see_subgraph from (select kgdj.can_see_subgraph(%s) as can_see_subgraph) x", (sg,)) is True, "full-access check the frontend uses to decide whether to show the critique form"
+    assert frank.one("select can_see_subgraph from (select kgdj.can_see_subgraph(%s) as can_see_subgraph) x", (sg,)) is False, "frank's is a partial, shared-item-only view"
+    alice.q("update kgdj.subgraph_nodes set shared=false where subgraph_id=%s and node_id=%s", (sg, tom))
+    assert frank.one("select count(*) from kgdj.student_subgraphs where id=%s", (sg,)) == 0, "un-sharing removes visibility again"
+    print("per-item module sharing ok (row-level only, parent metadata visible once shared, critique thread stays closed, owner-only toggle)")
+
     # --- consent + leaderboard + erasure ---------------------------------------------
     assert alice.one("select count(*) from kgdj.leaderboard") == 0
     alice.q("insert into kgdj.consent_records (profile_id, purpose, granted, policy_version) values (%s,'leaderboard_display',true,'v1')", (U["alice"],))
@@ -258,11 +278,12 @@ def main():
     # extended leaderboard: alice's row exposes the new authentic measures without error
     row = alice.q("""select approved_proposals, canonical_nodes_authored, citations_brought, reviews_written, portfolio_critiques,
                             helpful_votes_received, reviews_upheld, substantive_reviews, annotated_nodes, connections_written,
-                            cross_dept_connections, lenses_used, questions_raised, resources_added, active_weeks
+                            cross_dept_connections, lenses_used, questions_raised, resources_added, active_days
                      from kgdj.leaderboard where profile_id=%s""", (U["alice"],))
     assert len(row) == 1 and row[0][9] >= 2, f"alice's connections_written should include the fork + adopted edge: {row}"  # connections_written
+    assert row[0][14] >= 1, f"active_days is computed from real timestamps now, not a manually-entered week: {row}"
     print("extended leaderboard measures ok:", dict(zip(
-        ["approved", "nodes_authored", "citations", "reviews", "critiques", "helpful_recv", "upheld", "substantive", "annotated", "connections", "cross_dept", "lenses", "questions", "resources", "weeks"], row[0])))
+        ["approved", "nodes_authored", "citations", "reviews", "critiques", "helpful_recv", "upheld", "substantive", "annotated", "connections", "cross_dept", "lenses", "questions", "resources", "active_days"], row[0])))
 
     # anonymised cohort statistics: released only once >= 3 portfolios are in scope (never fewer)
     stats = alice.one("select kgdj.portfolio_cohort_stats('module', %s)", (module_id,))

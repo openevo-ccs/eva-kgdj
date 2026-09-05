@@ -5,7 +5,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { Api, CitationInput, DecisionInput, ForkItem, ProfilePatch, ProposalInput, ReviewInput } from "./api";
 import type { PortfolioBackup } from "./backup";
 import type {
-  Citation, CohortStats, ConsentPurpose, Department, EdgeDetail, GraphEdge, GraphNode, LeaderboardRow, Module, ModuleMemberRole, NodeDetail, PrivateNode, PrivateNodeType, Profile, Proposal,
+  Citation, CohortStats, CommonsItem, ConsentPurpose, Department, EdgeDetail, GraphEdge, GraphNode, LeaderboardRow, Module, ModuleMemberRole, NodeDetail, PrivateNode, PrivateNodeType, Profile, Proposal,
   ProposalDetail, ProposalStatus, ResearchGroup, Review, ReviewFlag, ReviewSummary, ReviewTarget, Session, Subgraph, SubgraphDetail, SubgraphLink, SubgraphNode, Visibility,
 } from "./types";
 
@@ -146,12 +146,20 @@ export class SupabaseApi implements Api {
   }
   async subgraphs() { return must(await this.t("student_subgraphs").select("*").order("updated_at", { ascending: false })) as Subgraph[]; }
   async subgraph(id: string): Promise<SubgraphDetail> {
-    const subgraph = must(await this.t("student_subgraphs").select("*").eq("id", id).single()) as Subgraph;
-    const nodes = must(await this.t("subgraph_nodes").select("*").eq("subgraph_id", id)) as SubgraphNode[];
-    const privateNodes = must(await this.t("subgraph_private_nodes").select("*").eq("subgraph_id", id)) as PrivateNode[];
-    const links = must(await this.t("subgraph_links").select("*").eq("subgraph_id", id)) as SubgraphLink[];
-    const reviews = must(await this.t("reviews_visible").select("*").eq("subgraph_id", id).order("created_at")) as Review[];
-    return { subgraph, nodes, privateNodes, links, reviews };
+    // can_see_subgraph is a security-definer helper (0002_rls.sql) already callable via RPC
+    // like the app's other SQL functions; the frontend uses it to tell "full access" apart
+    // from "reached this portfolio through one shared item" (0006_portfolio_ux.sql) so it
+    // knows whether to show the critique thread (reviews_visible stays empty either way —
+    // RLS alone already withholds it on a partial view, this is only for the UI's own copy).
+    const [subgraph, nodes, privateNodes, links, reviews, fullAccess] = await Promise.all([
+      this.t("student_subgraphs").select("*").eq("id", id).single().then(must) as Promise<Subgraph>,
+      this.t("subgraph_nodes").select("*").eq("subgraph_id", id).then(must) as Promise<SubgraphNode[]>,
+      this.t("subgraph_private_nodes").select("*").eq("subgraph_id", id).then(must) as Promise<PrivateNode[]>,
+      this.t("subgraph_links").select("*").eq("subgraph_id", id).then(must) as Promise<SubgraphLink[]>,
+      this.t("reviews_visible").select("*").eq("subgraph_id", id).order("created_at").then(must) as Promise<Review[]>,
+      this.sb.rpc("can_see_subgraph", { s: id }).then(must) as Promise<boolean>,
+    ]);
+    return { subgraph, nodes, privateNodes, links, reviews, full_access: fullAccess };
   }
   async createSubgraph(title: string, module_id: string | null) {
     const s = await this.getSession(); if (!s) throw new Error("not signed in");
@@ -159,24 +167,27 @@ export class SupabaseApi implements Api {
   }
   async updateSubgraph(id: string, patch: { title?: string; description?: string; last_checkpoint_week?: number | null }) { must(await this.t("student_subgraphs").update(patch).eq("id", id)); }
   async deleteSubgraph(id: string) { must(await this.t("student_subgraphs").delete().eq("id", id)); }
-  async forkNode(subgraph_id: string, node_id: string, annotation: string, week: number | null) {
-    must(await this.t("subgraph_nodes").upsert({ subgraph_id, node_id, custom_annotation: annotation, added_week: week }));
+  async forkNode(subgraph_id: string, node_id: string, annotation: string) {
+    must(await this.t("subgraph_nodes").upsert({ subgraph_id, node_id, custom_annotation: annotation }));
   }
   async forkNodes(subgraph_id: string, items: ForkItem[]) {
     if (!items.length) return;
-    must(await this.t("subgraph_nodes").upsert(items.map((i) => ({ subgraph_id, node_id: i.node_id, custom_annotation: i.annotation, added_week: i.week })), { onConflict: "subgraph_id,node_id", ignoreDuplicates: true }));
+    must(await this.t("subgraph_nodes").upsert(items.map((i) => ({ subgraph_id, node_id: i.node_id, custom_annotation: i.annotation })), { onConflict: "subgraph_id,node_id", ignoreDuplicates: true }));
   }
-  async updateAnnotation(subgraph_id: string, node_id: string, annotation: string, week: number | null) { must(await this.t("subgraph_nodes").update({ custom_annotation: annotation, added_week: week }).eq("subgraph_id", subgraph_id).eq("node_id", node_id)); }
+  async updateAnnotation(subgraph_id: string, node_id: string, annotation: string) { must(await this.t("subgraph_nodes").update({ custom_annotation: annotation }).eq("subgraph_id", subgraph_id).eq("node_id", node_id)); }
   async removeNode(subgraph_id: string, node_id: string) { must(await this.t("subgraph_nodes").delete().eq("subgraph_id", subgraph_id).eq("node_id", node_id)); }
-  async addPrivateNode(subgraph_id: string, node_type: PrivateNodeType, label: string, source: string | null, week: number | null) {
-    return must(await this.t("subgraph_private_nodes").insert({ subgraph_id, node_type, label, source, created_week: week }).select("*").single()) as PrivateNode;
+  async setNodeShared(subgraph_id: string, node_id: string, shared: boolean) { must(await this.t("subgraph_nodes").update({ shared, shared_at: shared ? new Date().toISOString() : null }).eq("subgraph_id", subgraph_id).eq("node_id", node_id)); }
+  async addPrivateNode(subgraph_id: string, node_type: PrivateNodeType, label: string, source: string | null) {
+    return must(await this.t("subgraph_private_nodes").insert({ subgraph_id, node_type, label, source }).select("*").single()) as PrivateNode;
   }
-  async updatePrivateNode(id: string, patch: { label?: string; source?: string | null; node_type?: PrivateNodeType; created_week?: number | null }) { must(await this.t("subgraph_private_nodes").update(patch).eq("id", id)); }
+  async updatePrivateNode(id: string, patch: { label?: string; source?: string | null; node_type?: PrivateNodeType }) { must(await this.t("subgraph_private_nodes").update(patch).eq("id", id)); }
   async removePrivateNode(id: string) { must(await this.t("subgraph_private_nodes").delete().eq("id", id)); }
-  async addLink(l: Omit<SubgraphLink, "id">) { must(await this.t("subgraph_links").insert(l)); }
-  async addLinks(ls: Omit<SubgraphLink, "id">[]) { if (ls.length) must(await this.t("subgraph_links").insert(ls)); }
-  async updateLink(id: string, patch: { why?: string; lens?: string | null; created_week?: number | null }) { must(await this.t("subgraph_links").update(patch).eq("id", id)); }
+  async setPrivateNodeShared(id: string, shared: boolean) { must(await this.t("subgraph_private_nodes").update({ shared, shared_at: shared ? new Date().toISOString() : null }).eq("id", id)); }
+  async addLink(l: Omit<SubgraphLink, "id" | "created_at" | "updated_at" | "shared" | "shared_at">) { must(await this.t("subgraph_links").insert(l)); }
+  async addLinks(ls: Omit<SubgraphLink, "id" | "created_at" | "updated_at" | "shared" | "shared_at">[]) { if (ls.length) must(await this.t("subgraph_links").insert(ls)); }
+  async updateLink(id: string, patch: { why?: string; lens?: string | null }) { must(await this.t("subgraph_links").update(patch).eq("id", id)); }
   async removeLink(id: string) { must(await this.t("subgraph_links").delete().eq("id", id)); }
+  async setLinkShared(id: string, shared: boolean) { must(await this.t("subgraph_links").update({ shared, shared_at: shared ? new Date().toISOString() : null }).eq("id", id)); }
   async savePositions(subgraph_id: string, positions: { node_id?: string; private_id?: string; x: number; y: number }[]) {
     for (const p of positions) {
       if (p.node_id) must(await this.t("subgraph_nodes").update({ pos_x: p.x, pos_y: p.y }).eq("subgraph_id", subgraph_id).eq("node_id", p.node_id));
@@ -194,14 +205,48 @@ export class SupabaseApi implements Api {
     const found = slugs.length ? (must(await this.t("nodes").select("id, slug").in("slug", slugs)) as { id: string; slug: string }[]) : [];
     const bySlug = Object.fromEntries(found.map((n) => [n.slug, n.id])); const map: Record<string, string> = {};
     const notNull = <T,>(x: T | null): x is T => x != null;
-    const rows = b.nodes.map((n) => { const id = (n.slug && bySlug[n.slug]) || null; if (!id) return null; map[n.node_id] = id; return { subgraph_id: g.id, node_id: id, custom_annotation: n.custom_annotation || "", pos_x: n.pos_x, pos_y: n.pos_y, added_week: n.added_week }; }).filter(notNull);
+    const rows = b.nodes.map((n) => { const id = (n.slug && bySlug[n.slug]) || null; if (!id) return null; map[n.node_id] = id; return { subgraph_id: g.id, node_id: id, custom_annotation: n.custom_annotation || "", pos_x: n.pos_x, pos_y: n.pos_y }; }).filter(notNull);
     if (rows.length) must(await this.t("subgraph_nodes").upsert(rows, { onConflict: "subgraph_id,node_id", ignoreDuplicates: true }));
-    for (const p of b.private_nodes) { const np = must(await this.t("subgraph_private_nodes").insert({ subgraph_id: g.id, node_type: p.node_type, label: p.label, source: p.source, origin: p.origin, created_week: p.created_week, pos_x: p.pos_x, pos_y: p.pos_y }).select("id").single()) as { id: string }; map[p.id] = np.id; }
-    const links = b.links.map((l) => { const f = l.from_node_id ? map[l.from_node_id] : map[l.from_private_id!], t = l.to_node_id ? map[l.to_node_id] : map[l.to_private_id!]; if (!f || !t) return null; return { subgraph_id: g.id, from_node_id: l.from_node_id ? f : null, from_private_id: l.from_private_id ? f : null, to_node_id: l.to_node_id ? t : null, to_private_id: l.to_private_id ? t : null, why: l.why, lens: l.lens, created_week: l.created_week }; }).filter(notNull);
+    for (const p of b.private_nodes) { const np = must(await this.t("subgraph_private_nodes").insert({ subgraph_id: g.id, node_type: p.node_type, label: p.label, source: p.source, origin: p.origin, pos_x: p.pos_x, pos_y: p.pos_y }).select("id").single()) as { id: string }; map[p.id] = np.id; }
+    const links = b.links.map((l) => { const f = l.from_node_id ? map[l.from_node_id] : map[l.from_private_id!], t = l.to_node_id ? map[l.to_node_id] : map[l.to_private_id!]; if (!f || !t) return null; return { subgraph_id: g.id, from_node_id: l.from_node_id ? f : null, from_private_id: l.from_private_id ? f : null, to_node_id: l.to_node_id ? t : null, to_private_id: l.to_private_id ? t : null, why: l.why, lens: l.lens }; }).filter(notNull);
     if (links.length) must(await this.t("subgraph_links").insert(links));
     return g;
   }
   async cohortStats(scope: "module" | "program" | "members", module_id?: string | null) { return must(await this.sb.rpc("portfolio_cohort_stats", { scope, module: module_id ?? null })) as CohortStats; }
+  async commonsItems(module_id?: string | null): Promise<CommonsItem[]> {
+    // RLS on subgraph_nodes/private_nodes/links already restricts .eq("shared", true) rows to
+    // "mine, or in a module I'm in" (0006_portfolio_ux.sql) — sequential lookups, not nested
+    // embeds, to sidestep ambiguous-FK issues with PostgREST's embed syntax (same convention
+    // as proposal()/node() above).
+    const [nodeRows, privRows, linkRows] = await Promise.all([
+      this.t("subgraph_nodes").select("subgraph_id, node_id, custom_annotation, shared_at").eq("shared", true).then(must) as Promise<{ subgraph_id: string; node_id: string; custom_annotation: string; shared_at: string }[]>,
+      this.t("subgraph_private_nodes").select("id, subgraph_id, label, node_type, shared_at").eq("shared", true).then(must) as Promise<{ id: string; subgraph_id: string; label: string; node_type: string; shared_at: string }[]>,
+      this.t("subgraph_links").select("id, subgraph_id, from_node_id, from_private_id, to_node_id, to_private_id, why, shared_at").eq("shared", true).then(must) as Promise<{ id: string; subgraph_id: string; from_node_id: string | null; from_private_id: string | null; to_node_id: string | null; to_private_id: string | null; why: string; shared_at: string }[]>,
+    ]);
+    const sgIds = [...new Set([...nodeRows, ...privRows, ...linkRows].map((r) => r.subgraph_id))];
+    if (!sgIds.length) return [];
+    const subgraphs = must(await this.t("student_subgraphs").select("id, title, owner_id, module_id").in("id", sgIds)) as { id: string; title: string; owner_id: string; module_id: string | null }[];
+    const sgById = Object.fromEntries(subgraphs.map((g) => [g.id, g]));
+    const scoped = module_id ? subgraphs.filter((g) => g.module_id === module_id) : subgraphs;
+    const scopedIds = new Set(scoped.map((g) => g.id));
+    const ownerIds = [...new Set(scoped.map((g) => g.owner_id))];
+    const modIds = [...new Set(scoped.map((g) => g.module_id).filter((x): x is string => !!x))];
+    const [owners, modules] = await Promise.all([
+      ownerIds.length ? (this.t("profiles").select("id, username").in("id", ownerIds).then(must) as Promise<{ id: string; username: string }[]>) : Promise.resolve([]),
+      modIds.length ? (this.t("modules").select("id, name").in("id", modIds).then(must) as Promise<{ id: string; name: string }[]>) : Promise.resolve([]),
+    ]);
+    const ownerName = Object.fromEntries(owners.map((o) => [o.id, o.username])); const moduleName = Object.fromEntries(modules.map((m) => [m.id, m.name]));
+    const nodeIds = [...new Set([...nodeRows.map((r) => r.node_id), ...linkRows.flatMap((r) => [r.from_node_id, r.to_node_id]).filter((x): x is string => !!x)])];
+    const nodes = nodeIds.length ? (must(await this.t("nodes").select("id, label").in("id", nodeIds)) as { id: string; label: string }[]) : [];
+    const nodeLabel = Object.fromEntries(nodes.map((n) => [n.id, n.label]));
+    const privLabel = Object.fromEntries(privRows.map((p) => [p.id, p.label]));
+    const endpoint = (nid: string | null, pid: string | null) => (nid ? nodeLabel[nid] ?? nid : pid ? privLabel[pid] ?? "a private idea" : "?");
+    const out: CommonsItem[] = [];
+    for (const r of nodeRows) if (scopedIds.has(r.subgraph_id)) { const g = sgById[r.subgraph_id]; out.push({ kind: "node", subgraph_id: g.id, subgraph_title: g.title, owner_username: ownerName[g.owner_id] ?? "member", module_name: g.module_id ? moduleName[g.module_id] ?? null : null, shared_at: r.shared_at, label: nodeLabel[r.node_id] ?? r.node_id, sub_label: r.custom_annotation || undefined, node_id: r.node_id }); }
+    for (const r of privRows) if (scopedIds.has(r.subgraph_id)) { const g = sgById[r.subgraph_id]; out.push({ kind: "private_node", subgraph_id: g.id, subgraph_title: g.title, owner_username: ownerName[g.owner_id] ?? "member", module_name: g.module_id ? moduleName[g.module_id] ?? null : null, shared_at: r.shared_at, label: r.label, sub_label: r.node_type }); }
+    for (const r of linkRows) if (scopedIds.has(r.subgraph_id)) { const g = sgById[r.subgraph_id]; out.push({ kind: "link", subgraph_id: g.id, subgraph_title: g.title, owner_username: ownerName[g.owner_id] ?? "member", module_name: g.module_id ? moduleName[g.module_id] ?? null : null, shared_at: r.shared_at, label: r.why, sub_label: `${endpoint(r.from_node_id, r.from_private_id)} → ${endpoint(r.to_node_id, r.to_private_id)}` }); }
+    return out.sort((a, b) => b.shared_at.localeCompare(a.shared_at));
+  }
   async leaderboard() { return must(await this.t("leaderboard").select("*")) as LeaderboardRow[]; }
   async consents() {
     const s = await this.getSession(); const out = { portfolio_processing: false, peer_review_visibility: false, leaderboard_display: false, canonical_attribution: false } as Record<ConsentPurpose, boolean>;
