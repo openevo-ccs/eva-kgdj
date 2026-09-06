@@ -155,12 +155,21 @@ max_indexes = 5
 enabled = true
 # The base URL of your website. Used as an allow-list for redirects and for constructing URLs used
 # in emails.
-site_url = "http://localhost:5173"
+site_url = "https://openevo-ccs.github.io/eva-kgdj/"
 # The public URL that Auth serves on. Defaults to the API external URL with `/auth/v1` appended.
 # external_url = ""
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
-# Add the Cloudflare Pages production URL here once deployed (see docs/kgdj/03-roadmap.md Week 1 step 4).
-additional_redirect_urls = ["http://localhost:5173", "http://localhost:5173/"]
+# Production: GitHub Pages, deployed from the public openevo-ccs/eva-kgdj repo (subtree-split from
+# apps/kgdj/ on 2026-09-06 — see git log). Localhost entries are for local dev against this same
+# real project (VITE_KGDJ_MODE=supabase). No Cloudflare Access or other extra gate in front — the
+# real security boundary is this project's own domain-allowlisted sign-up + RLS, not host obscurity
+# (decided 2026-09-06 after realizing the pilot's real scale is ~300-500 users, not ~30, which would
+# have blown past Cloudflare Access's 50-seat free tier).
+additional_redirect_urls = [
+  "https://openevo-ccs.github.io/eva-kgdj/",
+  "http://localhost:5173",
+  "http://localhost:5173/",
+]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
 # JWT issuer URL. If not set, defaults to auth.external_url.

@@ -28,9 +28,15 @@ npm run typecheck && npm run build
 ```
 
 Against Supabase: set `VITE_KGDJ_MODE=supabase`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`; apply
-`supabase/migrations` + seed (see `supabase/README.md`); add `kgdj` to *Project Settings → API → Exposed
-schemas*; enable the *Before User Created* auth hook `kgdj.before_user_created`. Deploy the `dist/` bundle
-behind an auth-gated host (Cloudflare Pages + Access recommended — ADR §4); GitHub Pages is not acceptable.
+`supabase/migrations` + seed (see `supabase/README.md`). Since 2026-09-06 this is all done for real
+(project `cxegvbakkyhsmooxifdc`, `eu-central-1`) via `supabase/config.toml` + `supabase config push` —
+see ADR §8 (`docs/kgdj/01-architecture-decision.md`).
+
+**This directory is mirrored to a public repo, `openevo-ccs/eva-kgdj`** (open-source frontend; the graph
+data stays gated behind Supabase auth/RLS, not repo privacy), deployed via GitHub Actions to GitHub Pages:
+`https://openevo-ccs.github.io/eva-kgdj/`. No Cloudflare Access or other host-level gate — ADR §8 explains
+why (real scale ~300–500 users breaks the free tier, and RLS + domain-allowlisted sign-up is already the
+real boundary). The mirror is a manual `git subtree push` away from this directory, not auto-synced yet.
 
 ## What the UI does (priority order from the brief)
 
