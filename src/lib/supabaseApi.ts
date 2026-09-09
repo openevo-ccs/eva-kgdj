@@ -204,6 +204,14 @@ export class SupabaseApi implements Api {
     const p = must(await this.t("profiles").select("id").eq("username", username).single()) as { id: string };
     must(await this.t("subgraph_shares").upsert({ subgraph_id, profile_id: p.id, can_review: true }));
   }
+  async sharesFor(subgraph_id: string) {
+    const rows = must(await this.t("subgraph_shares").select("shared_at, profiles(username)").eq("subgraph_id", subgraph_id).order("shared_at")) as unknown as { shared_at: string; profiles: { username: string } }[];
+    return rows.map((r) => ({ username: r.profiles.username, shared_at: r.shared_at }));
+  }
+  async unshare(subgraph_id: string, username: string) {
+    const p = must(await this.t("profiles").select("id").eq("username", username).single()) as { id: string };
+    must(await this.t("subgraph_shares").delete().eq("subgraph_id", subgraph_id).eq("profile_id", p.id));
+  }
   async importPortfolio(b: PortfolioBackup, title: string, module_id: string | null) {
     const g = await this.createSubgraph(title, module_id);
     const slugs = b.nodes.map((n) => n.slug).filter(Boolean) as string[];

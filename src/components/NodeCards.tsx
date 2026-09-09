@@ -70,6 +70,16 @@ export function NodeCards({ nodes, edges, deptById, onOpen, annotationOf, inPort
   );
 }
 
+// Shared by Explorer and Portfolio: once a student has actually picked a view, that choice
+// should stick across pages and reloads rather than silently reverting to "graph" every time.
+// null (nothing stored yet) is distinct from either real value — callers use it to decide
+// whether a first-visit default (e.g. Explorer's "no portfolio nodes yet -> cards") still applies.
+const VIEW_KEY = "kgdj.viewMode";
+export function loadViewPref(): "graph" | "cards" | null {
+  try { const v = localStorage.getItem(VIEW_KEY); return v === "graph" || v === "cards" ? v : null; } catch { return null; }
+}
+export function saveViewPref(v: "graph" | "cards") { try { localStorage.setItem(VIEW_KEY, v); } catch { /* private mode */ } }
+
 // Small "graph | cards" segmented toggle shared by Explorer and Portfolio toolbars.
 export function ViewToggle({ view, onChange }: { view: "graph" | "cards"; onChange: (v: "graph" | "cards") => void }) {
   return (

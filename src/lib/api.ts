@@ -79,6 +79,8 @@ export interface Api {
   savePositions(subgraph_id: string, positions: { node_id?: string; private_id?: string; x: number; y: number }[]): Promise<void>;
   setVisibility(subgraph_id: string, v: Visibility): Promise<void>;
   share(subgraph_id: string, username: string): Promise<void>;
+  sharesFor(subgraph_id: string): Promise<{ username: string; shared_at: string }[]>;
+  unshare(subgraph_id: string, username: string): Promise<void>;
   importPortfolio(b: PortfolioBackup, title: string, module_id: string | null): Promise<Subgraph>;
   cohortStats(scope: "module" | "program" | "members", module_id?: string | null): Promise<CohortStats>;
   commonsItems(module_id?: string | null): Promise<CommonsItem[]>;

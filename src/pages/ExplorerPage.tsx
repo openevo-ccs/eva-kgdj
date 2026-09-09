@@ -9,7 +9,7 @@ import { ResizableDrawer } from "../components/ResizableDrawer";
 import { NodeDrawer } from "../components/NodeDrawer";
 import { EdgeDrawer } from "../components/EdgeDrawer";
 import { Help, Tip } from "../components/Tip";
-import { NodeCards, ViewToggle } from "../components/NodeCards";
+import { loadViewPref, NodeCards, saveViewPref, ViewToggle } from "../components/NodeCards";
 import { useApi, useSession } from "../state/session";
 import type { CommonsItem, GraphEdge, GraphNode, Subgraph } from "../lib/types";
 import { COMMUNITY_COLORS, labelPropagation } from "../lib/analytics";
@@ -37,7 +37,8 @@ export default function ExplorerPage() {
   const [physics, setPhysics] = useState<PhysicsParams>(prefs.physics);
   const [encoding, setEncoding] = useState<EncodingParams>(prefs.encoding);
   const [autoFit, setAutoFit] = useState(prefs.autoFit);
-  const [view, setView] = useState<"graph" | "cards">("graph");
+  const [view, setView] = useState<"graph" | "cards">(loadViewPref() ?? "graph");
+  const changeView = (v: "graph" | "cards") => { setView(v); saveViewPref(v); };
   const [analysis, setAnalysis] = useState<Analysis>("none");
   const [pathFrom, setPathFrom] = useState<string | null>(null);
   const [path, setPath] = useState<string[] | null>(null);
@@ -60,7 +61,7 @@ export default function ExplorerPage() {
     // A brand-new student (nothing forked yet) lands on Cards rather than an unfiltered
     // 300+-node force layout — only ever applied once, on the first resolution, so it never
     // fights a later manual switch back to graph.
-    if (!viewDefaulted.current) { viewDefaulted.current = true; if (ids.size === 0) setView("cards"); }
+    if (!viewDefaulted.current) { viewDefaulted.current = true; if (ids.size === 0 && loadViewPref() === null) setView("cards"); }
   };
   useEffect(() => { reload(); }, [version]);
   useEffect(() => { loadMine(); }, []);
@@ -162,7 +163,7 @@ export default function ExplorerPage() {
   return (
     <div className="explorer" style={{ flex: 1, minWidth: 0 }}>
       <div className="toolbar">
-        <ViewToggle view={view} onChange={setView} />
+        <ViewToggle view={view} onChange={changeView} />
         {view === "graph" && <Tip text="Fit the whole graph in view now (or the selection, if any) — separate from the auto-fit toggle in the sidebar"><button className="btn" onClick={() => fitGraph(cyRef.current)}>Fit now</button></Tip>}
         <span className="muted">{visible.nodes.length} nodes · {visible.edges.length} edges</span>
       </div>

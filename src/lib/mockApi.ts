@@ -69,7 +69,7 @@ export class MockApi implements Api {
   private sgNodes: SubgraphNode[] = [];
   private privNodes: PrivateNode[] = [];
   private links: SubgraphLink[] = [];
-  private shares: { subgraph_id: string; profile_id: string }[] = [];
+  private shares: { subgraph_id: string; profile_id: string; shared_at: string }[] = [];
   private members: { module_id: string; profile_id: string; role: ModuleMemberRole }[] = [
     { module_id: MODULE.id, profile_id: "u-student", role: "student" }, { module_id: MODULE.id, profile_id: "u-student2", role: "student" },
     { module_id: MODULE.id, profile_id: "u-student3", role: "student" }, { module_id: MODULE.id, profile_id: "u-student4", role: "student" },
@@ -300,7 +300,7 @@ export class MockApi implements Api {
 
     // Amara's whole (private) portfolio, shared directly with Priya by name — the other access
     // pathway alongside per-item sharing and module-wide visibility.
-    this.shares.push({ subgraph_id: amara.id, profile_id: "u-student" });
+    this.shares.push({ subgraph_id: amara.id, profile_id: "u-student", shared_at: day(9) });
 
     // portfolio-level critiques: only available in full on the two module-visible portfolios
     // (Bram's, Sofia's) — the three "private" portfolios above can only be reached item-by-item
@@ -472,7 +472,12 @@ export class MockApi implements Api {
     for (const p of positions) { const t = p.node_id ? this.sgNodes.find((n) => n.subgraph_id === subgraph_id && n.node_id === p.node_id) : this.privNodes.find((n) => n.id === p.private_id); if (t) { t.pos_x = p.x; t.pos_y = p.y; } }
   }
   async setVisibility(subgraph_id: string, v: Visibility) { this.owns(subgraph_id).visibility = v; }
-  async share(subgraph_id: string, username: string) { this.owns(subgraph_id); const p = EVERYONE.find((x) => x.username === username); if (!p) throw new Error("no such member"); this.shares.push({ subgraph_id, profile_id: p.id }); }
+  async share(subgraph_id: string, username: string) { this.owns(subgraph_id); const p = EVERYONE.find((x) => x.username === username); if (!p) throw new Error("no such member"); this.shares = this.shares.filter((s) => !(s.subgraph_id === subgraph_id && s.profile_id === p.id)); this.shares.push({ subgraph_id, profile_id: p.id, shared_at: now() }); }
+  async sharesFor(subgraph_id: string) {
+    this.owns(subgraph_id);
+    return this.shares.filter((s) => s.subgraph_id === subgraph_id).map((s) => ({ username: EVERYONE.find((p) => p.id === s.profile_id)?.username ?? s.profile_id, shared_at: s.shared_at })).sort((a, b) => a.shared_at.localeCompare(b.shared_at));
+  }
+  async unshare(subgraph_id: string, username: string) { this.owns(subgraph_id); const p = EVERYONE.find((x) => x.username === username); if (!p) return; this.shares = this.shares.filter((s) => !(s.subgraph_id === subgraph_id && s.profile_id === p.id)); }
   async importPortfolio(b: PortfolioBackup, title: string, module_id: string | null) {
     const r = await this.data(); const g = await this.createSubgraph(title, module_id);
     const bySlug = Object.fromEntries(r.nodes.map((n) => [n.slug, n.id])); const map: Record<string, string> = {};

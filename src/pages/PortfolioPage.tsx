@@ -4,7 +4,7 @@ import type { Core } from "cytoscape";
 import { GraphCanvas, fitGraph, type CtxTarget, type EncodingParams, type LayoutName, type PhysicsParams, type Selection } from "../components/GraphCanvas";
 import type { ContextMenuItem } from "../components/ContextMenu";
 import { LayoutPicker, loadGraphPrefs } from "../components/LayoutPicker";
-import { NodeCards, ViewToggle } from "../components/NodeCards";
+import { loadViewPref, NodeCards, saveViewPref, ViewToggle } from "../components/NodeCards";
 import { ResizableDrawer } from "../components/ResizableDrawer";
 import { ReviewForm, ReviewList } from "../components/ReviewPanel";
 import { Help, Tip } from "../components/Tip";
@@ -31,10 +31,12 @@ export default function PortfolioPage() {
   const [pn, setPn] = useState<{ type: PrivateNodeType; label: string; source: string }>({ type: "question", label: "", source: "" });
   const [link, setLink] = useState<{ from: string; to: string; why: string; lens: string }>({ from: "", to: "", why: "", lens: "" });
   const [shareWith, setShareWith] = useState(""); const [err, setErr] = useState<string | null>(null); const [ok, setOk] = useState<string | null>(null);
+  const [shares, setShares] = useState<{ username: string; shared_at: string }[]>([]);
   const [cy, setCy] = useState<Core | null>(null);
   const [sel, setSel] = useState<Selection>({ nodes: [], edges: [] });
   const prefs = useMemo(loadGraphPrefs, []);
-  const [view, setView] = useState<"graph" | "cards">("graph");
+  const [view, setView] = useState<"graph" | "cards">(loadViewPref() ?? "graph");
+  const changeView = (v: "graph" | "cards") => { setView(v); saveViewPref(v); };
   const [layout, setLayout] = useState<LayoutName>("preset");
   const [physics, setPhysics] = useState<PhysicsParams>(prefs.physics);
   const [encoding, setEncoding] = useState<EncodingParams>(prefs.encoding);
@@ -47,6 +49,8 @@ export default function PortfolioPage() {
   useEffect(() => { loadList(); api.graph().then(setGraph); }, []);
   useEffect(() => { setData(null); setErr(null); setOk(null); setSel({ nodes: [], edges: [] }); layoutInit.current = false; load(); }, [id]);
   const mine = data?.subgraph.owner_id === profile?.id;
+  const loadShares = () => { if (mine && data) api.sharesFor(data.subgraph.id).then(setShares); else setShares([]); };
+  useEffect(loadShares, [mine, data?.subgraph.id]);
   const nodesById = useMemo(() => Object.fromEntries(graph.nodes.map((n) => [n.id, n])), [graph]);
 
   // Composite graph: forked canonical nodes + private nodes + the student's own links (+ canonical edges among forked nodes as dashed context)
@@ -172,9 +176,12 @@ export default function PortfolioPage() {
         <span className="muted">{data.nodes.length} canonical · {data.privateNodes.length} own · {data.links.length} connections</span>
         {mine && <>
           <Tip text={VIS_TIP[sg.visibility]}><select value={sg.visibility} onChange={async (e) => { await api.setVisibility(sg.id, e.target.value as Visibility); load(); }} aria-label="Visibility"><option value="private">private</option><option value="shared">shared (listed people)</option><option value="module">module</option><option value="members">all members</option></select></Tip>
-          <Tip text="Give one classmate access (and the right to critique) by username"><input placeholder="share with username" value={shareWith} onChange={(e) => setShareWith(e.target.value)} style={{ width: 150 }} /></Tip><button className="btn" onClick={async () => { try { await api.share(sg.id, shareWith); setShareWith(""); setOk(`Shared with ${shareWith}.`); } catch (e) { setErr((e as Error).message); } }}>share</button>
+          <Tip text="Give one classmate access (and the right to critique) by username"><input placeholder="share with username" value={shareWith} onChange={(e) => setShareWith(e.target.value)} style={{ width: 150 }} /></Tip><button className="btn" onClick={async () => { try { await api.share(sg.id, shareWith); setOk(`Shared with ${shareWith}.`); setShareWith(""); loadShares(); } catch (e) { setErr((e as Error).message); } }}>share</button>
+          {shares.length > 0 && <span className="row" style={{ gap: 4 }}>
+            {shares.map((s) => <Tip key={s.username} text={`Shared ${dateOf(s.shared_at)} — click × to revoke`}><span className="chip">{s.username} <button className="btn btn-mini" style={{ padding: "0 3px" }} onClick={async () => { await api.unshare(sg.id, s.username); loadShares(); }} aria-label={`Stop sharing with ${s.username}`}>×</button></span></Tip>)}
+          </span>}
         </>}
-        <ViewToggle view={view} onChange={setView} />
+        <ViewToggle view={view} onChange={changeView} />
         {view === "graph" && <LayoutPicker layout={layout} onLayout={setLayout} physics={physics} onPhysics={setPhysics} encoding={encoding} onEncoding={setEncoding} autoFit={autoFit} onAutoFit={setAutoFit} allowPreset />}
         {view === "graph" && <Tip text="Fit the whole portfolio in view now — separate from the auto-fit toggle in layout options"><button className="btn" onClick={() => fitGraph(cy)}>Fit</button></Tip>}
         {mine && <span className="row" data-tour="backup" style={{ marginLeft: "auto", gap: 6 }}>
