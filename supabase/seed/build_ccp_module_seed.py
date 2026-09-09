@@ -26,6 +26,11 @@ So this import:
     import -- ccp_module's own concept files don't yet link `literature:`
     ids (only external `oecs:`/`evape:` corpus refs), so no node_citations
     rows are created here; that link doesn't exist upstream yet either;
+
+  Validated 2026-09-09 against a real Postgres 16 (a throwaway Docker
+  container on the home-server box, torn down immediately after) --
+  460 nodes (154 ccp_module-imported), 901 edges, 41 citations, 2
+  generic ccp-* nodes archived + same-as-linked. No constraint errors.
   * supersedes the generic ccp-* nodes from 0001_mpi_eva_graph.sql: where a
     generic node's label exactly matches a ccp_module concept's label (a
     "clear match", not a fuzzy guess), archives the generic node and links
