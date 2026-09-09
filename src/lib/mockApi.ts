@@ -53,12 +53,18 @@ export class MockApi implements Api {
   private me_: Profile;
   private listeners: ((s: Session | null) => void)[] = [];
   private signedIn = true;
+  // verification shapes match build_literature_seed.py's real import, not an
+  // invented mock-only convention -- see isVerifiedCitation() in lib/types.ts. Four
+  // of these five are genuine, well-known MPI-EVA-affiliated papers that would
+  // plausibly PuRe-match for real; c-3 (Zeberg & Pääbo) is left unverified on purpose,
+  // to demo the "has an identifier, not yet confirmed" case honestly rather than
+  // making every mock citation look equally trustworthy.
   private citations: Citation[] = [
-    { id: "c-1", doi: "10.1017/s0140525x05000129", openalex_id: "W2106980598", title: "Understanding and sharing intentions: The origins of cultural cognition", authors: ["Tomasello, M.", "Carpenter, M.", "Call, J.", "Behne, T.", "Moll, H."], year: 2005, venue: "Behavioral and Brain Sciences", verification: { crossref: { verdict: "ok" }, pure: { item_id: "item_58292" } } },
-    { id: "c-2", doi: "10.1038/21415", openalex_id: "W2028434776", title: "Cultures in chimpanzees", authors: ["Whiten, A.", "Goodall, J.", "McGrew, W. C.", "Boesch, C."], year: 1999, venue: "Nature", verification: { crossref: { verdict: "ok" } } },
-    { id: "c-3", doi: "10.1038/s41586-020-2818-3", title: "The major genetic risk factor for severe COVID-19 is inherited from Neanderthals", authors: ["Zeberg, H.", "Pääbo, S."], year: 2020, venue: "Nature", verification: { crossref: { verdict: "ok" } } },
-    { id: "c-4", doi: "10.1017/s0140525x0999152x", title: "The weirdest people in the world?", authors: ["Henrich, J.", "Heine, S. J.", "Norenzayan, A."], year: 2010, venue: "Behavioral and Brain Sciences", verification: { crossref: { verdict: "ok" } } },
-    { id: "c-6", doi: "10.1073/pnas.0610848104", title: "Linguistic tone is related to the population frequency of the adaptive haplogroups of two brain size genes, ASPM and Microcephalin", authors: ["Dediu, D.", "Ladd, D. R."], year: 2007, venue: "PNAS", verification: { crossref: { verdict: "ok" } } },
+    { id: "c-1", doi: "10.1017/s0140525x05000129", openalex_id: "W2106980598", title: "Understanding and sharing intentions: The origins of cultural cognition", authors: ["Tomasello, M.", "Carpenter, M.", "Call, J.", "Behne, T.", "Moll, H."], year: 2005, venue: "Behavioral and Brain Sciences", verification: { source: "eva_literature", pure: { matched: true, method: "doi", item_id: "item_58292" } } },
+    { id: "c-2", doi: "10.1038/21415", openalex_id: "W2028434776", title: "Cultures in chimpanzees", authors: ["Whiten, A.", "Goodall, J.", "McGrew, W. C.", "Boesch, C."], year: 1999, venue: "Nature", verification: { source: "eva_literature", pure: { matched: true, method: "doi", item_id: "item_61140" } } },
+    { id: "c-3", doi: "10.1038/s41586-020-2818-3", title: "The major genetic risk factor for severe COVID-19 is inherited from Neanderthals", authors: ["Zeberg, H.", "Pääbo, S."], year: 2020, venue: "Nature", verification: {} },
+    { id: "c-4", doi: "10.1017/s0140525x0999152x", title: "The weirdest people in the world?", authors: ["Henrich, J.", "Heine, S. J.", "Norenzayan, A."], year: 2010, venue: "Behavioral and Brain Sciences", verification: { source: "eva_literature", pure: { matched: true, method: "doi", item_id: "item_70213" } } },
+    { id: "c-6", doi: "10.1073/pnas.0610848104", title: "Linguistic tone is related to the population frequency of the adaptive haplogroups of two brain size genes, ASPM and Microcephalin", authors: ["Dediu, D.", "Ladd, D. R."], year: 2007, venue: "PNAS", verification: { source: "eva_literature", pure: { matched: true, method: "doi", item_id: "item_44981" } } },
   ];
   private propList: Proposal[] = [];
   private proposalCitations: Record<string, string[]> = {};

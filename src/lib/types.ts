@@ -36,6 +36,18 @@ export interface Citation {
   id: string; doi: string | null; pure_item_id?: string | null; pure_handle?: string | null; openalex_id?: string | null;
   title: string; authors: string[]; year: number | null; venue: string | null; url?: string | null; verification: Record<string, unknown>;
 }
+// A citation carries a doi/pure id the moment it's created (citation_has_identifier,
+// 0001_schema.sql) -- that alone is not verification, just an identifier someone typed
+// in. Real verification is a checked claim recorded in the verification field: today,
+// a match against the institute's own PuRe CRIS record (build_literature_seed.py). A citation
+// added ad hoc through "add a citation not yet in the journal" (NewProposalPage) has a
+// doi but an EMPTY verification object -- showing it with the same "verified" styling
+// as an institute-confirmed one would be exactly the overclaim 09-trust-and-
+// verification.md argues against, just relocated from the graph to the citation list.
+export function isVerifiedCitation(c: Pick<Citation, "verification">): boolean {
+  const v = c.verification as { pure?: { matched?: boolean } } | undefined;
+  return !!v?.pure?.matched;
+}
 export interface Proposal {
   id: string; proposer_id: string | null; change_type: ChangeType; target_node_id: string | null; target_edge_id: string | null;
   payload: Record<string, unknown>; rationale: string; module_id: string | null; status: ProposalStatus; submitter_anonymous: boolean;

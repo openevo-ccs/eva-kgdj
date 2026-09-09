@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import type { CommonsItem, GraphNode, NodeDetail, Subgraph } from "../lib/types";
-import { CHANGE_LABEL } from "../lib/types";
+import { CHANGE_LABEL, isVerifiedCitation } from "../lib/types";
 import { isEditor, useApi, useSession } from "../state/session";
 import { ContentFlags } from "./ContentFlags";
 import { DeptSwatch, ProvenanceChip, StatusChip } from "./Chips";
@@ -35,7 +35,7 @@ export function NodeDrawer({ nodeId, nodesById, inPortfolio, sharedByClassmates,
         <p>{n.description || <span className="muted">No description.</span>}</p>
         {n.tags.length > 0 && <div className="row">{n.tags.map((t) => <span className="chip" key={t}>{t}</span>)}</div>}
         <h3 style={{ marginTop: 12 }}>Citations ({d.citations.length}) <Help text="Literature attached to this node through approved proposals. DOIs are verified against Crossref by the editors' routine." /></h3>
-        {d.citations.length ? <ul>{d.citations.map((c) => <li key={c.id}>{c.authors.slice(0, 3).join(", ")}{c.authors.length > 3 ? " et al." : ""} ({c.year ?? "n.d."}). {c.title}. {c.doi && <a href={`https://doi.org/${c.doi}`} target="_blank" rel="noopener">doi</a>}</li>)}</ul> : <div className="muted">None yet — a proposal adding one is the natural first contribution.</div>}
+        {d.citations.length ? <ul>{d.citations.map((c) => <li key={c.id}>{isVerifiedCitation(c) && <Tip text="Matched against the institute's own PuRe repository record."><span className="chip chip-verified" style={{ marginRight: 4 }}>✓</span></Tip>}{c.authors.slice(0, 3).join(", ")}{c.authors.length > 3 ? " et al." : ""} ({c.year ?? "n.d."}). {c.title}. {c.doi && <a href={`https://doi.org/${c.doi}`} target="_blank" rel="noopener">doi</a>}</li>)}</ul> : <div className="muted">None yet — a proposal adding one is the natural first contribution.</div>}
         <h3>Connections ({d.edges.length}) <Help text="Edges touching this node. → means this node is the source, ← the target. Click one to open the edge." /></h3>
         <ul>{d.edges.slice(0, 40).map((e) => { const other = e.source_node_id === n.id ? e.target_node_id : e.source_node_id; const o = nodesById[other]; return <li key={e.id}>{e.source_node_id === n.id ? "→" : "←"} <Link to={`/explore?edge=${e.id}`}><i>{e.relationship_code}</i></Link> <Link to={`/explore/${other}`}>{o ? o.label : other}</Link> <StatusChip status={e.status} /></li>; })}</ul>
         {d.proposals.length > 0 && <><h3>Open proposals</h3><ul>{d.proposals.map((p) => <li key={p.id}><Link to={`/proposals/${p.id}`}>{CHANGE_LABEL[p.change_type]}</Link> <StatusChip status={p.status} /></li>)}</ul></>}

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import type { ChangeType, Citation, GraphEdge, GraphNode, Proposal } from "../lib/types";
-import { CHANGE_LABEL } from "../lib/types";
+import { CHANGE_LABEL, isVerifiedCitation } from "../lib/types";
 import { useApi, useSession } from "../state/session";
 import { StatusChip } from "../components/Chips";
 import { Help, Tip } from "../components/Tip";
@@ -85,7 +85,16 @@ export function NewProposalPage() {
   const citationsCard = (needsCit: boolean) => (
     <div className="card">
       <h2>Citations {needsCit && <span className="muted">(at least one required)</span>} <Help text="Additions and edits must cite at least one source (DOI or PuRe handle). Search the journal's citation pool first; add a new one only if it is missing." /></h2>
-      {chosen.map((c) => <div className="row" key={c.id}><span className="chip chip-verified">{c.doi || c.pure_handle}</span><span>{c.title} ({c.year ?? "n.d."})</span><button className="btn" onClick={() => setChosen(chosen.filter((x) => x.id !== c.id))}>remove</button></div>)}
+      {chosen.map((c) => {
+        const verified = isVerifiedCitation(c);
+        return <div className="row" key={c.id}>
+          <Tip text={verified ? "Matched against the institute's own PuRe repository record — this is genuinely MPI-EVA-affiliated work, not just a resolvable identifier." : "Has an identifier, but nobody has confirmed it against the institute's own records yet. Not wrong — just not yet verified the way an imported citation is."}>
+            <span className={verified ? "chip chip-verified" : "chip"}>{verified ? "✓ " : ""}{c.doi || c.pure_handle}</span>
+          </Tip>
+          <span>{c.title} ({c.year ?? "n.d."})</span>
+          <button className="btn" onClick={() => setChosen(chosen.filter((x) => x.id !== c.id))}>remove</button>
+        </div>;
+      })}
       <div className="field" style={{ marginTop: 8 }}><label>Find an existing citation (DOI or title)</label><input value={citQ} onChange={(e) => setCitQ(e.target.value)} placeholder="10.1017/… or title words" /></div>
       {found.filter((f) => !chosen.some((c) => c.id === f.id)).slice(0, 8).map((c) => <div className="row" key={c.id}><button className="btn" onClick={() => setChosen([...chosen, c])}>add</button><span>{c.authors.slice(0, 2).join(", ")} ({c.year ?? "n.d."}) {c.title}</span></div>)}
       <details style={{ marginTop: 10 }}><summary className="muted">Add a citation not yet in the journal</summary>
