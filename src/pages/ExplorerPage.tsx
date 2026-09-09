@@ -142,7 +142,7 @@ export default function ExplorerPage() {
   return (
     <div className="explorer" style={{ flex: 1, minWidth: 0 }}>
       <div className="toolbar">
-        <Tip text="Fit the whole graph in view now (or the selection, if any) — separate from the auto-fit toggle in the sidebar"><button className="btn" onClick={() => fitGraph(cyRef.current, true)}>Fit now</button></Tip>
+        <Tip text="Fit the whole graph in view now (or the selection, if any) — separate from the auto-fit toggle in the sidebar"><button className="btn" onClick={() => fitGraph(cyRef.current)}>Fit now</button></Tip>
         <span className="muted">{visible.nodes.length} nodes · {visible.edges.length} edges</span>
       </div>
       {(active.explain || analysis === "path") && <div className="subbar">
@@ -164,7 +164,7 @@ export default function ExplorerPage() {
             </div>
           </div>}
         </span>
-        <button className="btn" onClick={() => fitGraph(cyRef.current, true)}>Fit to selection</button>
+        <button className="btn" onClick={() => fitGraph(cyRef.current)}>Fit to selection</button>
         <button className="btn" onClick={() => clearSelection(cyRef.current)}>Clear</button>
       </div>}
       {notice && <div className={`notice notice-${notice.kind}`} style={{ margin: "6px 12px 0" }}>{notice.text} {notice.link && <Link to={notice.link}>Open portfolio →</Link>} <button className="btn btn-mini" onClick={() => setNotice(null)} style={{ marginLeft: 8 }}>×</button></div>}

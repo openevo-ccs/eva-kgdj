@@ -97,6 +97,12 @@ export function GraphCanvas(p: GraphCanvasProps) {
   const runningLayout = useRef<{ stop: () => void } | null>(null);
   const lastLayout = useRef<string>("");
   const cb = useRef(p); cb.current = p;
+  // true only while "physics" (cola, infinite:true) is live-simulating: it never emits its own
+  // layoutstop, and unlike the one-shot layouts (which all default fit:true and correctly frame
+  // themselves already) a resize-triggered fit caught mid-simulation would fit to whatever
+  // transient, still-drifting bounding box exists at that instant and then just stay there —
+  // looks exactly like the graph "flying out of view" once the simulation settles back down.
+  const liveSimActive = useRef(false);
   const [menu, setMenu] = useState<{ x: number; y: number; target: CtxTarget } | null>(null);
 
   // (re)build elements when data/colouring changes
@@ -160,12 +166,19 @@ export function GraphCanvas(p: GraphCanvasProps) {
       // (or a fast automated click) tries to click an item. ContextMenu's own pointerdown
       // "click outside" check already covers dismissing on a real background tap.
       cy.on("pan zoom", () => setMenu(null));
-      // Fixes nodes loading collapsed/off-screen: a layout's own fit:true fits against whatever
-      // size the container happened to be AT THAT MOMENT, which can be wrong (0-sized, or about
-      // to change as sibling banners/sidebars finish rendering) — re-fitting once the layout
-      // actually settles, and again whenever the container's real size changes (see the
-      // ResizeObserver below), catches both cases without depending on init ordering.
-      cy.on("layoutstop", () => { if (cb.current.autoFit ?? true) cy.animate({ fit: { eles: cy.elements(), padding: 30 }, duration: 300 }); });
+      // One-shot layouts (cose/dagre/concentric/grid) all default fit:true and correctly frame
+      // themselves already — no extra handling needed. "physics" is different: it deliberately
+      // sets fit:false (fitting on every simulation tick would be constant camera jitter) and
+      // never fires its own layoutstop (infinite:true runs until explicitly stopped), so it gets
+      // exactly one fit, after giving the simulation a moment to get past its initial chaotic
+      // "explosion" from overlapping start positions — not fit continuously, which is what the
+      // ResizeObserver below must avoid doing while a live simulation is still moving things.
+      cy.on("layoutstart", () => {
+        if (cb.current.layout !== "physics") return;
+        liveSimActive.current = true;
+        window.setTimeout(() => { if (liveSimActive.current && (cb.current.autoFit ?? true)) cy.fit(undefined, 30); }, 900);
+      });
+      cy.on("layoutstop", () => { liveSimActive.current = false; });
       p.onReady?.(cy);
     } else {
       // Patch in place rather than remove()+add(): this effect re-fires for reasons that have
@@ -254,10 +267,12 @@ export function GraphCanvas(p: GraphCanvasProps) {
     const ro = new ResizeObserver(() => {
       const cy = cyRef.current; if (!cy) return;
       cy.resize();
-      // Same rationale as the layoutstop handler above: the container's real size is often not
-      // what it was when the layout last fit the viewport (sidebars/banners still settling right
-      // after mount is the common case) — this is what actually fixes nodes loading off-screen.
-      if (cb.current.autoFit ?? true) cy.fit(undefined, 30);
+      // The container's real size is often not what it was when the layout last fit the
+      // viewport (sidebars/banners still settling right after mount is the common case) — this
+      // is what actually fixes nodes loading off-screen. Skipped while physics is live-simulating
+      // (see liveSimActive above) — fitting to a still-moving bounding box mid-simulation is the
+      // "flies out of view" bug, not a fix for it.
+      if ((cb.current.autoFit ?? true) && !liveSimActive.current) cy.fit(undefined, 30);
     });
     ro.observe(host.current);
     return () => ro.disconnect();
@@ -320,7 +335,29 @@ export function baseSelectionActions(cy: Core, target: CtxTarget): ContextMenuIt
 }
 
 // Helpers used by the pages' toolbar buttons.
-export function fitGraph(cy: Core | null, toSelection = false) { if (!cy) return; const sel = cy.$(":selected"); if (toSelection && sel.length) cy.animate({ fit: { eles: sel.closedNeighborhood(), padding: 60 }, duration: 250 }); else cy.animate({ fit: { eles: cy.elements(), padding: 30 }, duration: 250 }); }
+// Centres on the true centroid of the selected nodes' own positions (not their neighbourhood,
+// and not just the midpoint of their bounding box — a selection skewed toward one side, e.g.
+// three clustered nodes and one distant outlier, has a centroid closer to the cluster than the
+// bounding box's own centre would put it) when something is selected; otherwise the whole
+// visible graph. Zoom still comes from the selection's bounding box, so it's framed properly —
+// only where that framing gets centred changes.
+export function fitGraph(cy: Core | null) {
+  if (!cy) return;
+  const sel = cy.$(":selected");
+  const eles = sel.length ? sel : cy.elements();
+  const bb = eles.boundingBox();
+  const pad = sel.length ? 60 : 30;
+  const w = cy.width(), h = cy.height();
+  const zoom = Math.min(cy.maxZoom(), Math.max(cy.minZoom(), Math.min((w - pad * 2) / Math.max(bb.w, 1), (h - pad * 2) / Math.max(bb.h, 1))));
+  const nodes = eles.nodes();
+  let cx = (bb.x1 + bb.x2) / 2, cyy = (bb.y1 + bb.y2) / 2;
+  if (nodes.length) {
+    let sx = 0, sy = 0;
+    nodes.forEach((n) => { const p = n.position(); sx += p.x; sy += p.y; });
+    cx = sx / nodes.length; cyy = sy / nodes.length;
+  }
+  cy.animate({ zoom, pan: { x: w / 2 - cx * zoom, y: h / 2 - cyy * zoom } }, { duration: 250 });
+}
 export function clearSelection(cy: Core | null) { cy?.elements().unselect(); }
 export function selectIds(cy: Core | null, ids: string[]) { if (!cy) return; cy.batch(() => { cy.elements().unselect(); ids.forEach((id) => cy.getElementById(id).select()); }); }
 
