@@ -50,6 +50,16 @@ export interface Review {
 }
 export interface ReviewSummary { target_kind: ReviewTarget; target_id: string; n_reviews: number; strongly_accept: number; accept: number; neutral: number; reject: number; strongly_reject: number; mean_score: number | null; credible_reviews: number; all_reviewers_deleted: boolean; last_review_at: string | null }
 export interface ReviewFlag { id: string; target_kind: ReviewTarget; target_id: string; reason: string; raised_at: string; resolved_at: string | null; note: string | null }
+// A quick "this looks wrong" pointer on a node or edge -- distinct from ReviewFlag
+// (editor-only, reviewer-integrity issues like an erased reviewer) and from Review (a
+// full identified critique with a rating). See docs/kgdj/10-design-patterns-research.md
+// and 0009_content_flags.sql. Always identified, like reviews -- never anonymous.
+export type ContentFlagTargetKind = "node" | "edge";
+export interface ContentFlag {
+  id: string; target_kind: ContentFlagTargetKind; target_id: string; reason: string; created_at: string;
+  flagged_by: string; flagged_by_username?: string | null;
+  resolved_at: string | null; resolved_by: string | null; resolved_by_username?: string | null; resolution_note: string | null;
+}
 export interface EditorialDecision { id: string; proposal_id: string | null; node_id: string | null; edge_id: string | null; editor_id: string; decision: Decision; feedback: string; decided_at: string }
 
 export interface Subgraph { id: string; owner_id: string; module_id: string | null; title: string; description: string; visibility: Visibility; last_checkpoint_week: number | null; created_at: string }
@@ -139,8 +149,8 @@ export const COMMONS_ROLE_HELP: Record<CommonsRole, string> = {
 export const COMMONS_JOIN_POLICY_LABEL: Record<CommonsJoinPolicy, string> = { invite_only: "Invite only", request_approval: "Request to join", open_to_module_members: "Open to module members" };
 
 export interface Session { userId: string; email: string | null }
-export interface NodeDetail { node: GraphNode; citations: Citation[]; reviews: Review[]; summary: ReviewSummary | null; proposals: Proposal[]; edges: GraphEdge[]; flags: ReviewFlag[] }
-export interface EdgeDetail { edge: GraphEdge; source: GraphNode | null; target: GraphNode | null; reviews: Review[]; summary: ReviewSummary | null; citations: Citation[] }
+export interface NodeDetail { node: GraphNode; citations: Citation[]; reviews: Review[]; summary: ReviewSummary | null; proposals: Proposal[]; edges: GraphEdge[]; flags: ReviewFlag[]; contentFlags: ContentFlag[] }
+export interface EdgeDetail { edge: GraphEdge; source: GraphNode | null; target: GraphNode | null; reviews: Review[]; summary: ReviewSummary | null; citations: Citation[]; contentFlags: ContentFlag[] }
 export interface ProposalDetail { proposal: Proposal; citations: Citation[]; reviews: Review[]; summary: ReviewSummary | null; decisions: EditorialDecision[]; targetNode: GraphNode | null; proposerUsername: string | null }
 
 export const RATING_LABEL: Record<Rating, string> = { strongly_reject: "Strongly reject", reject: "Reject", neutral: "Neutral", accept: "Accept", strongly_accept: "Strongly accept" };

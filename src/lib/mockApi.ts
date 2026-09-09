@@ -7,7 +7,7 @@ import type { PortfolioBackup } from "./backup";
 import { portfolioMetrics } from "./report";
 import type {
   Citation, CohortStats, CommonsDecisionRow, CommonsItem, CommonsItemT, CommonsLink, CommonsParticipant, CommonsParticipantStatus, CommonsProposal, CommonsProposalDetail, CommonsReview, CommonsRole,
-  CommonsSpace, CommonsSpaceDetail, ConsentPurpose, Department, EdgeDetail, EditorialDecision, GraphEdge, GraphNode, ItemComment, ItemCommentTarget, LeaderboardRow, MetricKey, Module, ModuleMemberRole,
+  CommonsSpace, CommonsSpaceDetail, ConsentPurpose, ContentFlag, ContentFlagTargetKind, Department, EdgeDetail, EditorialDecision, GraphEdge, GraphNode, ItemComment, ItemCommentTarget, LeaderboardRow, MetricKey, Module, ModuleMemberRole,
   NodeDetail, PrivateNode, PrivateNodeType, Profile, Proposal, ProposalDetail, ProposalStatus, ResearchGroup, Review, ReviewFlag, ReviewSummary, ReviewTarget, Session, Subgraph, SubgraphDetail, SubgraphLink, SubgraphNode, Visibility,
 } from "./types";
 
@@ -75,6 +75,7 @@ export class MockApi implements Api {
   private helpful: { review_id: string; voter_id: string }[] = [];
   private decisions: EditorialDecision[] = [];
   private flagList: ReviewFlag[] = [];
+  private contentFlagList: ContentFlag[] = [];
   private sgList: Subgraph[] = [];
   private sgNodes: SubgraphNode[] = [];
   private privNodes: PrivateNode[] = [];
@@ -403,11 +404,13 @@ export class MockApi implements Api {
     const r = await this.data(); const node = r.nodes.find((n) => n.id === id); if (!node) throw new Error("node not found");
     return { node, citations: [], reviews: this.decorate(this.reviews.filter((x) => x.node_id === id)), summary: this.summarize("node", id),
       proposals: this.propList.filter((p) => p.target_node_id === id && ["pending", "under_review", "revision_requested"].includes(p.status)).map((p) => this.mask(p)),
-      edges: r.edges.filter((e) => (e.source_node_id === id || e.target_node_id === id) && e.status !== "archived"), flags: this.flagList.filter((f) => f.target_id === id && !f.resolved_at) };
+      edges: r.edges.filter((e) => (e.source_node_id === id || e.target_node_id === id) && e.status !== "archived"), flags: this.flagList.filter((f) => f.target_id === id && !f.resolved_at),
+      contentFlags: this.contentFlagList.filter((f) => f.target_id === id) };
   }
   async edge(id: string): Promise<EdgeDetail> {
     const r = await this.data(); const edge = r.edges.find((e) => e.id === id); if (!edge) throw new Error("edge not found");
-    return { edge, source: r.nodes.find((n) => n.id === edge.source_node_id) || null, target: r.nodes.find((n) => n.id === edge.target_node_id) || null, reviews: this.decorate(this.reviews.filter((x) => x.edge_id === id)), summary: this.summarize("edge", id), citations: [] };
+    return { edge, source: r.nodes.find((n) => n.id === edge.source_node_id) || null, target: r.nodes.find((n) => n.id === edge.target_node_id) || null, reviews: this.decorate(this.reviews.filter((x) => x.edge_id === id)), summary: this.summarize("edge", id), citations: [],
+      contentFlags: this.contentFlagList.filter((f) => f.target_id === id) };
   }
   async searchCitations(q: string) { const s = q.toLowerCase(); return this.citations.filter((c) => (c.doi || "").includes(s) || c.title.toLowerCase().includes(s)); }
   async addCitation(c: CitationInput) { const cit: Citation = { id: nid("c"), doi: c.doi ?? null, pure_handle: c.pure_handle ?? null, title: c.title, authors: c.authors, year: c.year ?? null, venue: c.venue ?? null, url: c.url ?? null, verification: {} }; this.citations.push(cit); return cit; }
@@ -479,6 +482,21 @@ export class MockApi implements Api {
   }
   async flags() { return this.flagList.filter((f) => !f.resolved_at); }
   async resolveFlag(id: string, note: string) { const f = this.flagList.find((x) => x.id === id)!; f.resolved_at = now(); f.note = note; }
+  async contentFlagQueue() { return this.contentFlagList.filter((f) => !f.resolved_at); }
+  async addContentFlag(target_kind: ContentFlagTargetKind, target_id: string, reason: string) {
+    this.contentFlagList.push({ id: nid("cf"), target_kind, target_id, flagged_by: this.me_.id, flagged_by_username: this.me_.username, reason, created_at: now(), resolved_at: null, resolved_by: null, resolved_by_username: null, resolution_note: null });
+  }
+  async resolveContentFlag(id: string, note: string) {
+    if (!this.isEditor()) throw new Error("Only editors resolve content flags");
+    if (!note || note.trim().length < 3) throw new Error("A resolution needs a short note");
+    const f = this.contentFlagList.find((x) => x.id === id)!; f.resolved_at = now(); f.resolved_by = this.me_.id; f.resolved_by_username = this.me_.username; f.resolution_note = note;
+  }
+  async withdrawContentFlag(id: string) {
+    const f = this.contentFlagList.find((x) => x.id === id);
+    if (!f || f.resolved_at) return;  // matches RLS: nothing to do once resolved
+    if (f.flagged_by !== this.me_.id && !this.isEditor()) throw new Error("only the flagger or an editor may withdraw a flag");
+    this.contentFlagList = this.contentFlagList.filter((x) => x.id !== id);
+  }
   async reviewQueue() {
     const proposals = await this.proposals({ status: ["pending", "under_review", "revision_requested"] });
     const summaries: Record<string, ReviewSummary> = {}; for (const p of proposals) { const s = this.summarize("proposal", p.id); if (s) summaries[p.id] = s; }

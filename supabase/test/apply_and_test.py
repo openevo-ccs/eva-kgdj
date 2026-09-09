@@ -207,6 +207,31 @@ def main():
     assert frank.one("select count(*) from kgdj.student_subgraphs where id=%s", (sg,)) == 0, "un-sharing removes visibility again"
     print("per-item module sharing ok (row-level only, parent metadata visible once shared, critique thread stays closed, owner-only toggle)")
 
+    # --- 0009: content flags — "this looks wrong", distinct from a full review ---
+    # frank: a plain member, not the seed node's author, not an editor. Any member may flag.
+    fl1 = frank.one("insert into kgdj.content_flags (target_kind, target_id, flagged_by, reason) values ('node',%s,%s,'This citation looks outdated — a 2021 replication failed to reproduce the effect.') returning id", (seed, U["frank"]))
+    assert alice.one("select count(*) from kgdj.content_flags where target_id=%s", (seed,)) == 1, "any member sees the flag (nodes/edges are already visible to all members)"
+    anon.expect_error("select count(*) from kgdj.content_flags", contains="permission denied")
+    frank.expect_error("insert into kgdj.content_flags (target_kind, target_id, flagged_by, reason) values ('node',%s,%s,'x')", (seed, U["frank"]), contains="check")  # reason too short (< 5 chars)
+    frank.expect_error("insert into kgdj.content_flags (target_kind, target_id, flagged_by, reason) values ('proposal',%s,%s,'wrong scope entirely')", (pid, U["frank"]), contains="check")  # target_kind restricted to node/edge
+    frank.expect_error("update kgdj.content_flags set resolution_note='sneaky' where id=%s", (fl1,), contains="permission denied")  # no UPDATE grant at all — must go through the function
+    eve.expect_error("select kgdj.resolve_content_flag(%s, null)", (fl1,), contains="short note")  # a bare resolve with no explanation is refused, not silently accepted
+    bob.expect_error("select kgdj.resolve_content_flag(%s, 'trying anyway')", (fl1,), contains="only editors")
+    eve.q("select kgdj.resolve_content_flag(%s, 'Checked the citation: still the best available source as of this review; no replacement found.')", (fl1,))
+    assert admin.one("select resolved_by from kgdj.content_flags where id=%s", (fl1,)) == uuid.UUID(U["eve"]), "resolution is attributed"
+    row = admin.q("select flagged_by_username, resolved_by_username from kgdj.content_flags_visible where id=%s", (fl1,))[0]
+    assert row == ("frank", "eve"), row
+    # withdraw-your-own-open-flag, and an editor may remove anyone's
+    fl2 = frank.one("insert into kgdj.content_flags (target_kind, target_id, flagged_by, reason) values ('node',%s,%s,'Actually, rereading it, I think this is fine.') returning id", (seed, U["frank"]))
+    frank.q("delete from kgdj.content_flags where id=%s", (fl2,))
+    assert admin.one("select count(*) from kgdj.content_flags where id=%s", (fl2,)) == 0, "flagger withdrew their own open flag"
+    fl3 = frank.one("insert into kgdj.content_flags (target_kind, target_id, flagged_by, reason) values ('node',%s,%s,'Second opinion wanted on this one.') returning id", (seed, U["frank"]))
+    alice.q("delete from kgdj.content_flags where id=%s", (fl3,))  # not the flagger, not an editor -> 0 rows, no error
+    assert admin.one("select count(*) from kgdj.content_flags where id=%s", (fl3,)) == 1, "only the flagger or an editor may remove a flag"
+    eve.q("delete from kgdj.content_flags where id=%s", (fl3,))
+    assert admin.one("select count(*) from kgdj.content_flags where id=%s", (fl3,)) == 0, "an editor may remove any flag"
+    print("content flags ok (any member flags/reads, scope restricted to node/edge, resolve requires a real note and editor role, own-or-editor delete)")
+
     # --- consent + leaderboard + erasure ---------------------------------------------
     assert alice.one("select count(*) from kgdj.leaderboard") == 0
     alice.q("insert into kgdj.consent_records (profile_id, purpose, granted, policy_version) values (%s,'leaderboard_display',true,'v1')", (U["alice"],))

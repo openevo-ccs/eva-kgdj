@@ -6,7 +6,7 @@ import type { Api, CitationInput, CommonsDecisionInput, CommonsProposalInput, Co
 import type { PortfolioBackup } from "./backup";
 import type {
   Citation, CohortStats, CommonsItem, CommonsItemT, CommonsLink, CommonsParticipant, CommonsParticipantStatus, CommonsProposal, CommonsProposalDetail, CommonsReview, CommonsRole, CommonsSpace,
-  CommonsSpaceDetail, ConsentPurpose, Department, EdgeDetail, GraphEdge, GraphNode, ItemComment, ItemCommentTarget, LeaderboardRow, Module, ModuleMemberRole, NodeDetail, PrivateNode, PrivateNodeType,
+  CommonsSpaceDetail, ConsentPurpose, ContentFlag, ContentFlagTargetKind, Department, EdgeDetail, GraphEdge, GraphNode, ItemComment, ItemCommentTarget, LeaderboardRow, Module, ModuleMemberRole, NodeDetail, PrivateNode, PrivateNodeType,
   Profile, Proposal, ProposalDetail, ProposalStatus, ResearchGroup, Review, ReviewFlag, ReviewSummary, ReviewTarget, Session, Subgraph, SubgraphDetail, SubgraphLink, SubgraphNode, Visibility,
 } from "./types";
 
@@ -101,14 +101,16 @@ export class SupabaseApi implements Api {
     const proposals = must(await this.t("proposals_visible").select("*").eq("target_node_id", id).in("status", ["pending", "under_review", "revision_requested"])) as Proposal[];
     const edges = must(await this.t("edges").select("*").or(`source_node_id.eq.${id},target_node_id.eq.${id}`).neq("status", "archived")) as GraphEdge[];
     const flags = must(await this.t("review_flags").select("*").eq("target_id", id).is("resolved_at", null)) as ReviewFlag[];
-    return { node, citations: cit.map((c) => c.citations), reviews, summary, proposals, edges, flags };
+    const contentFlags = must(await this.t("content_flags_visible").select("*").eq("target_id", id).order("created_at")) as ContentFlag[];
+    return { node, citations: cit.map((c) => c.citations), reviews, summary, proposals, edges, flags, contentFlags };
   }
   async edge(id: string): Promise<EdgeDetail> {
     const edge = must(await this.t("edges").select("*").eq("id", id).single()) as GraphEdge;
     const ends = must(await this.t("nodes").select("*").in("id", [edge.source_node_id, edge.target_node_id])) as GraphNode[];
     const cit = must(await this.t("edge_citations").select("citations(*)").eq("edge_id", id)) as unknown as { citations: Citation }[];
     const reviews = must(await this.t("reviews_visible").select("*").eq("edge_id", id).order("created_at")) as Review[];
-    return { edge, source: ends.find((n) => n.id === edge.source_node_id) || null, target: ends.find((n) => n.id === edge.target_node_id) || null, reviews, summary: await this.reviewSummary("edge", id), citations: cit.map((c) => c.citations) };
+    const contentFlags = must(await this.t("content_flags_visible").select("*").eq("target_id", id).order("created_at")) as ContentFlag[];
+    return { edge, source: ends.find((n) => n.id === edge.source_node_id) || null, target: ends.find((n) => n.id === edge.target_node_id) || null, reviews, summary: await this.reviewSummary("edge", id), citations: cit.map((c) => c.citations), contentFlags };
   }
   async searchCitations(q: string) {
     if (!q.trim()) return [];
@@ -172,6 +174,13 @@ export class SupabaseApi implements Api {
   }
   async flags() { return must(await this.t("review_flags").select("*").is("resolved_at", null).order("raised_at")) as ReviewFlag[]; }
   async resolveFlag(id: string, note: string) { must(await this.sb.rpc("resolve_review_flag", { flag: id, note_text: note })); }
+  async contentFlagQueue() { return must(await this.t("content_flags_visible").select("*").is("resolved_at", null).order("created_at")) as ContentFlag[]; }
+  async addContentFlag(target_kind: ContentFlagTargetKind, target_id: string, reason: string) {
+    const id = await this.uid();
+    must(await this.t("content_flags").insert({ target_kind, target_id, flagged_by: id, reason }));
+  }
+  async resolveContentFlag(id: string, note: string) { must(await this.sb.rpc("resolve_content_flag", { flag: id, note_text: note })); }
+  async withdrawContentFlag(id: string) { must(await this.t("content_flags").delete().eq("id", id)); }  // RLS: own-open-flag-or-editor
   async reviewQueue() {
     const proposals = await this.proposals({ status: ["pending", "under_review", "revision_requested"] });
     const rows = must(await this.t("review_summary").select("*").eq("target_kind", "proposal")) as ReviewSummary[];

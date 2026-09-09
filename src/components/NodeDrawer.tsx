@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import type { CommonsItem, GraphNode, NodeDetail, Subgraph } from "../lib/types";
 import { CHANGE_LABEL } from "../lib/types";
 import { isEditor, useApi, useSession } from "../state/session";
+import { ContentFlags } from "./ContentFlags";
 import { DeptSwatch, ProvenanceChip, StatusChip } from "./Chips";
 import { ReviewForm, ReviewList, ReviewSummaryBar } from "./ReviewPanel";
 import { Help, Tip } from "./Tip";
@@ -38,6 +39,7 @@ export function NodeDrawer({ nodeId, nodesById, inPortfolio, sharedByClassmates,
         <h3>Connections ({d.edges.length}) <Help text="Edges touching this node. → means this node is the source, ← the target. Click one to open the edge." /></h3>
         <ul>{d.edges.slice(0, 40).map((e) => { const other = e.source_node_id === n.id ? e.target_node_id : e.source_node_id; const o = nodesById[other]; return <li key={e.id}>{e.source_node_id === n.id ? "→" : "←"} <Link to={`/explore?edge=${e.id}`}><i>{e.relationship_code}</i></Link> <Link to={`/explore/${other}`}>{o ? o.label : other}</Link> <StatusChip status={e.status} /></li>; })}</ul>
         {d.proposals.length > 0 && <><h3>Open proposals</h3><ul>{d.proposals.map((p) => <li key={p.id}><Link to={`/proposals/${p.id}`}>{CHANGE_LABEL[p.change_type]}</Link> <StatusChip status={p.status} /></li>)}</ul></>}
+        <ContentFlags kind="node" targetId={n.id} flags={d.contentFlags} onChanged={load} />
         {!!sharedByClassmates?.length && <>
           <h3>Shared by classmates ({sharedByClassmates.length}) <Help text="Members who deliberately shared their own take on this exact node into a module's Commons. Their full portfolio may still be private — this is only what they chose to share." /></h3>
           <ul>{sharedByClassmates.map((c, i) => <li key={i}><Link to={`/portfolio/${c.subgraph_id}`}>{c.owner_username}</Link>{c.sub_label && <>: {c.sub_label}</>}</li>)}</ul>

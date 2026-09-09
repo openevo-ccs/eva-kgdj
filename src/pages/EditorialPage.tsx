@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import type { GraphNode, Proposal, ReviewFlag, ReviewSummary } from "../lib/types";
+import type { ContentFlag, GraphNode, Proposal, ReviewFlag, ReviewSummary } from "../lib/types";
 import { CHANGE_LABEL } from "../lib/types";
 import { useApi, useSession } from "../state/session";
 import { DeptSwatch, StatusChip } from "../components/Chips";
@@ -16,6 +16,8 @@ export default function EditorialPage() {
   const api = useApi(); const { deptById, departments } = useSession();
   const [queue, setQueue] = useState<{ proposals: Proposal[]; summaries: Record<string, ReviewSummary> }>({ proposals: [], summaries: {} });
   const [flags, setFlags] = useState<ReviewFlag[]>([]);
+  const [contentFlags, setContentFlags] = useState<ContentFlag[]>([]);
+  const [cfNote, setCfNote] = useState("");
   const [seed, setSeed] = useState<GraphNode[]>([]);
   const [nodeSummaries, setNodeSummaries] = useState<Record<string, ReviewSummary>>({});
   const [note, setNote] = useState("");
@@ -26,11 +28,18 @@ export default function EditorialPage() {
   const [underLinked, setUnderLinked] = useState<UnderLinkedNode[]>([]);
   const [deptPairs, setDeptPairs] = useState<DeptPair[]>([]);
   const [chains, setChains] = useState<PendantChain[]>([]);
+  // Labels for content-flag targets: a flag can land on any node/edge, canonical or
+  // proposed, not just the seed-promotion list below -- needs the full graph, not
+  // just `seed`.
+  const [nodesById, setNodesById] = useState<Record<string, GraphNode>>({});
+  const [edgeLabelById, setEdgeLabelById] = useState<Record<string, string>>({});
   const load = async () => {
-    const [q, f, g] = await Promise.all([api.reviewQueue(), api.flags(), api.graph()]);
-    setQueue(q); setFlags(f);
+    const [q, f, g, cf] = await Promise.all([api.reviewQueue(), api.flags(), api.graph(), api.contentFlagQueue()]);
+    setQueue(q); setFlags(f); setContentFlags(cf);
     const proposed = g.nodes.filter((n) => n.status === "proposed");
     setSeed(proposed);
+    setNodesById(Object.fromEntries(g.nodes.map((n) => [n.id, n])));
+    setEdgeLabelById(Object.fromEntries(g.edges.map((e) => [e.id, e.relationship_code])));
     const sums: Record<string, ReviewSummary> = {};
     await Promise.all(proposed.slice(0, 400).map(async (n) => { const s = await api.reviewSummary("node", n.id); if (s) sums[n.id] = s; }));
     setNodeSummaries(sums);
@@ -50,10 +59,18 @@ export default function EditorialPage() {
         <div className="stat"><b>{seed.length}</b><span>seed nodes awaiting promotion</span></div>
         <div className="stat"><b>{reviewedSeed.length}</b><span>of them reviewed</span></div>
         <div className="stat" style={flags.length ? { borderColor: "#f0b8b8" } : {}}><b>{flags.length}</b><span>integrity flags</span></div>
+        <div className="stat" style={contentFlags.length ? { borderColor: "#f0b8b8" } : {}}><b>{contentFlags.length}</b><span>reported issues</span></div>
         <div className="stat" style={emptyPairs.length ? { borderColor: "#e9cf95" } : {}}><b>{emptyPairs.length}</b><span>department pairs with no bridge</span></div>
       </div>
       {flags.length > 0 && <div className="card"><h2>Reviewer-integrity flags</h2><p className="muted">Every identified reviewer of these records has since erased their account. A fresh identified review is needed before (re)promotion.</p>
         <table><thead><tr><th>Target</th><th>Reason</th><th>Raised</th><th></th></tr></thead><tbody>{flags.map((f) => <tr key={f.id}><td>{f.target_kind} <Link to={f.target_kind === "node" ? `/explore/${f.target_id}` : `/proposals/${f.target_id}`}>{f.target_id.slice(0, 8)}…</Link></td><td>{f.reason.replace(/_/g, " ")}</td><td className="muted">{new Date(f.raised_at).toLocaleDateString()}</td><td><input placeholder="note" value={note} onChange={(e) => setNote(e.target.value)} style={{ width: 160 }} /> <button className="btn" onClick={async () => { await api.resolveFlag(f.id, note); setNote(""); load(); }}>resolve</button></td></tr>)}</tbody></table></div>}
+      {contentFlags.length > 0 && <div className="card"><h2>Reported issues <Help text="Quick 'this looks wrong' pointers from members — not full reviews. Distinct from reviewer-integrity flags above. The same action is also available directly on the node or edge itself." /></h2>
+        <table><thead><tr><th>Target</th><th>Reported by</th><th>Reason</th><th>Raised</th><th></th></tr></thead><tbody>{contentFlags.map((f) => {
+          const label = f.target_kind === "node" ? (nodesById[f.target_id]?.label ?? f.target_id.slice(0, 8) + "…") : (edgeLabelById[f.target_id] ?? f.target_id.slice(0, 8) + "…");
+          const to = f.target_kind === "node" ? `/explore/${f.target_id}` : `/explore?edge=${f.target_id}`;
+          return <tr key={f.id}><td>{f.target_kind} <Link to={to}>{label}</Link></td><td>{f.flagged_by_username ?? "member"}</td><td>{f.reason}</td><td className="muted">{new Date(f.created_at).toLocaleDateString()}</td>
+            <td><input placeholder="what did you check?" value={cfNote} onChange={(e) => setCfNote(e.target.value)} style={{ width: 180 }} /> <button className="btn" disabled={cfNote.trim().length < 3} onClick={async () => { await api.resolveContentFlag(f.id, cfNote); setCfNote(""); load(); }}>resolve</button></td></tr>;
+        })}</tbody></table></div>}
       <div className="card"><h2>Proposals awaiting decision</h2>
         <table><thead><tr><th>Change</th><th>Status</th><th>Reviews</th><th>Mean</th><th>Credible</th><th>Updated</th></tr></thead>
           <tbody>{queue.proposals.map((p) => { const s = queue.summaries[p.id]; return <tr key={p.id}><td><Link to={`/proposals/${p.id}`}>{CHANGE_LABEL[p.change_type]}</Link><div className="muted">{p.rationale.slice(0, 90)}…</div></td><td><StatusChip status={p.status} /></td><td>{s?.n_reviews ?? 0}</td><td>{s?.mean_score ?? "—"} {disagrees(s) && <Tip text="Reviewers didn't just land near the middle — at least one accepted and at least one rejected. Probably wants a synthesis conversation, not just more reviews."><span className="chip chip-flag">disagree</span></Tip>}</td><td>{s ? (s.all_reviewers_deleted ? <span className="chip chip-flag">none</span> : s.credible_reviews) : "—"}</td><td className="muted">{new Date(p.updated_at).toLocaleDateString()}</td></tr>; })}

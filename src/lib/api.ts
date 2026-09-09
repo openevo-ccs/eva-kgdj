@@ -7,6 +7,7 @@ import type {
   CommonsReview, CommonsRole, CommonsSpace, CommonsSpaceDetail, ConsentPurpose, Decision, Department, EdgeDetail, EditorialDecision, GraphEdge, GraphNode, ItemComment, ItemCommentTarget, LeaderboardRow,
   Module, ModuleMemberRole, NodeDetail, PrivateNode, PrivateNodeType, Profile, Proposal, ProposalDetail, ProposalStatus, Rating, ResearchGroup, Review, ReviewFlag, ReviewSummary,
   ReviewTarget, Session, Subgraph, SubgraphDetail, SubgraphLink, Visibility, ChangeType, CommonsJoinPolicy,
+  ContentFlag, ContentFlagTargetKind,
 } from "./types";
 import type { PortfolioBackup } from "./backup";
 
@@ -71,6 +72,11 @@ export interface Api {
   flags(): Promise<ReviewFlag[]>;
   resolveFlag(id: string, note: string): Promise<void>;
   reviewQueue(): Promise<{ proposals: Proposal[]; summaries: Record<string, ReviewSummary> }>;
+  // content flags (0009) -- a low-friction "this looks wrong", distinct from review().
+  contentFlagQueue(): Promise<ContentFlag[]>;
+  addContentFlag(kind: ContentFlagTargetKind, targetId: string, reason: string): Promise<void>;
+  resolveContentFlag(id: string, note: string): Promise<void>;
+  withdrawContentFlag(id: string): Promise<void>;
   // portfolios
   subgraphs(): Promise<Subgraph[]>;
   subgraph(id: string): Promise<SubgraphDetail>;

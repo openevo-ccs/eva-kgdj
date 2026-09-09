@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import type { EdgeDetail } from "../lib/types";
 import { isEditor, useApi, useSession } from "../state/session";
+import { ContentFlags } from "./ContentFlags";
 import { ProvenanceChip, StatusChip } from "./Chips";
 import { ReviewForm, ReviewList, ReviewSummaryBar } from "./ReviewPanel";
 import { Help, Tip } from "./Tip";
@@ -29,6 +30,7 @@ export function EdgeDrawer({ edgeId, onClose, onChanged }: { edgeId: string; onC
         <p className="muted">Relationship types are read in the direction of the arrow: "A <i>grounds</i> B" means A is a foundation for B. <Help text="grounds · enables · applies-to · measures · informs · contrasts-with · relates-to · cross-dept · evidences · cites · same-as" /></p>
         <h3>Citations ({d.citations.length})</h3>
         {d.citations.length ? <ul>{d.citations.map((c) => <li key={c.id}>{c.authors.slice(0, 3).join(", ")} ({c.year ?? "n.d."}). {c.title}. {c.doi && <a href={`https://doi.org/${c.doi}`} target="_blank" rel="noopener">doi</a>}</li>)}</ul> : <div className="muted">None yet.</div>}
+        <ContentFlags kind="edge" targetId={e.id} flags={d.contentFlags} onChanged={load} />
         <h3 style={{ marginTop: 12 }}>Propose</h3>
         <div className="row"><Link className="btn" to={`/proposals/new?type=edit_edge&edge=${e.id}`}>Propose edit</Link><Link className="btn btn-danger" to={`/proposals/new?type=delete_edge&edge=${e.id}`}>Propose removal</Link></div>
         {editor && e.status !== "canonical" && <div className="row" style={{ marginTop: 12 }}><button className="btn btn-primary" onClick={() => decide("promote")}>Promote to canonical</button><button className="btn btn-danger" onClick={() => decide("archive")}>Archive</button></div>}
