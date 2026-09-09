@@ -9,10 +9,18 @@ import { ResizableDrawer } from "../components/ResizableDrawer";
 import { ReviewForm, ReviewList } from "../components/ReviewPanel";
 import { Help, Tip } from "../components/Tip";
 import { useApi, useSession } from "../state/session";
-import type { CohortStats, GraphEdge, GraphNode, PrivateNode, PrivateNodeType, Subgraph, SubgraphDetail, SubgraphLink, SubgraphNode, Visibility } from "../lib/types";
+import type { CohortStats, GraphEdge, GraphNode, PrivateNode, PrivateNodeType, Proposal, Subgraph, SubgraphDetail, SubgraphLink, SubgraphNode, Visibility } from "../lib/types";
 import { PRIVATE_TYPE_HELP } from "../lib/types";
 import { backedUpThisSession, buildBackup, downloadText, lastBackupAt, noteBackup, parseBackup, safeFilename } from "../lib/backup";
 import { buildReportHtml, portfolioMetrics } from "../lib/report";
+import { buildPortfolioTimeline, TIMELINE_KIND_LABEL, type TimelineKind } from "../lib/timeline";
+
+const TIMELINE_ICON: Record<TimelineKind, string> = { forked: "⑃", "own-node": "★", connection: "—", proposal: "↗" };
+function timeAgo(iso: string): string {
+  const d = new Date(iso); const days = Math.round((Date.now() - d.getTime()) / 86400000);
+  const when = days === 0 ? "today" : days === 1 ? "yesterday" : days < 30 ? `${days} days ago` : d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  return `${d.toLocaleDateString(undefined, { month: "short", day: "numeric" })} · ${when}`;
+}
 
 const PRIVATE_COLORS: Record<PrivateNodeType, string> = { self: "#7a2027", question: "#8659d6", resource: "#1f5f9c", theory: "#d9445f", method: "#e2833f" };
 const VIS_TIP: Record<Visibility, string> = { private: "Only you (and your module's instructor) can open it", shared: "You, your instructor, and the people you list below", module: "Everyone in your module", members: "Every KGDJ member" };
@@ -37,6 +45,11 @@ export default function PortfolioPage() {
   const prefs = useMemo(loadGraphPrefs, []);
   const [view, setView] = useState<"graph" | "cards">(loadViewPref() ?? "graph");
   const changeView = (v: "graph" | "cards") => { setView(v); saveViewPref(v); };
+  // Independent of graph/cards on purpose: a student's own record of their path, not
+  // another way to look at the SAME graph — see lib/timeline.ts. Not persisted to
+  // localStorage like graph/cards; a lighter-weight mode, not a durable preference.
+  const [showTimeline, setShowTimeline] = useState(false);
+  const [myProposals, setMyProposals] = useState<Proposal[]>([]);
   const [layout, setLayout] = useState<LayoutName>("preset");
   const [physics, setPhysics] = useState<PhysicsParams>(prefs.physics);
   const [encoding, setEncoding] = useState<EncodingParams>(prefs.encoding);
@@ -52,6 +65,14 @@ export default function PortfolioPage() {
   const loadShares = () => { if (mine && data) api.sharesFor(data.subgraph.id).then(setShares); else setShares([]); };
   useEffect(loadShares, [mine, data?.subgraph.id]);
   const nodesById = useMemo(() => Object.fromEntries(graph.nodes.map((n) => [n.id, n])), [graph]);
+  // Proposals aren't tied to a portfolio in the schema (proposed_changes has no
+  // subgraph_id — see lib/timeline.ts), and `mine: true` scopes to the CURRENT
+  // session's user, not this portfolio's owner. Fetching it for a portfolio you don't
+  // own would silently show the viewer's own proposals inside someone else's
+  // timeline — fetch only when they actually match, never otherwise.
+  useEffect(() => { if (showTimeline && mine) api.proposals({ mine: true }).then(setMyProposals); }, [showTimeline, mine]);
+  const timeline = useMemo(() => (data ? buildPortfolioTimeline(data, nodesById, mine ? myProposals : []) : []), [data, nodesById, mine, myProposals]);
+  const myPortfolioCount = list.filter((g) => g.owner_id === profile?.id).length;
 
   // Composite graph: forked canonical nodes + private nodes + the student's own links (+ canonical edges among forked nodes as dashed context)
   const composite = useMemo(() => {
@@ -188,6 +209,7 @@ export default function PortfolioPage() {
         <ViewToggle view={view} onChange={changeView} />
         {view === "graph" && <LayoutPicker layout={layout} onLayout={setLayout} physics={physics} onPhysics={setPhysics} encoding={encoding} onEncoding={setEncoding} autoFit={autoFit} onAutoFit={setAutoFit} allowPreset />}
         {view === "graph" && <Tip text="Fit the whole portfolio in view now — separate from the auto-fit toggle in layout options"><button className="btn" onClick={() => fitGraph(cy)}>Fit</button></Tip>}
+        <Tip text="Not another way to view the graph — a record of when each piece of it was made, to look back on. Nothing here is a schedule; nobody is behind."><button className={"btn" + (showTimeline ? " active" : "")} onClick={() => setShowTimeline((v) => !v)}>📖 Timeline</button></Tip>
         {mine && <span className="row" data-tour="backup" style={{ marginLeft: "auto", gap: 6 }}>
           <Tip text="Download this portfolio as a JSON file you keep yourself. Restore it from the portfolios list at any time." place="bottom"><button className={"btn " + (fresh ? "btn-ok" : "btn-warn")} onClick={doBackup}>⬇ Download backup</button></Tip>
           <Tip text="Self-contained HTML report: your portfolio's shape compared with anonymised aggregates of your module and the MSc program, plus one suggestion per dimension." place="bottom"><button className="btn" disabled={reportBusy} onClick={doReport}>{reportBusy ? "…" : "⬇ Download report"}</button></Tip>
@@ -202,7 +224,29 @@ export default function PortfolioPage() {
       {(err || ok) && <div className={`notice ${err ? "notice-bad" : "notice-ok"}`} style={{ margin: "6px 12px 0" }}>{err || ok} <button className="btn btn-mini" onClick={() => { setErr(null); setOk(null); }} style={{ marginLeft: 8 }}>×</button></div>}
       <div className="explorer-body">
         <div className="graph-host">
-          {view === "cards" ? (
+          {showTimeline ? (
+            <div className="page-narrow" style={{ padding: "16px 20px", overflow: "auto", height: "100%" }}>
+              <h3 style={{ marginTop: 0 }}>Your timeline</h3>
+              <p className="muted">
+                Not a schedule — a record. Every entry below is a real, server-stamped moment, oldest first, so you can look back on how your own thinking moved.
+                {mine && myPortfolioCount > 1 && " Proposals shown are across all of your portfolios, not only this one — proposals aren't tied to a single portfolio."}
+                {!mine && " Proposals aren't shown on a portfolio you don't own."}
+              </p>
+              {!timeline.length && <p className="muted">Nothing yet — fork a node, add one of your own, or write a connection to start it.</p>}
+              <div className="timeline-list">
+                {timeline.map((t, i) => (
+                  <div className="review" key={i} style={{ cursor: t.linkTo ? "pointer" : "default" }} onClick={() => t.linkTo && nav(t.linkTo)}>
+                    <div className="row" style={{ justifyContent: "space-between" }}>
+                      <b><span className="muted" style={{ marginRight: 6 }}>{TIMELINE_ICON[t.kind]}</span>{TIMELINE_KIND_LABEL[t.kind]}</b>
+                      <span className="muted">{timeAgo(t.at)}</span>
+                    </div>
+                    <div>{t.label}</div>
+                    {t.detail && <div className="muted">{t.detail}</div>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : view === "cards" ? (
             <NodeCards nodes={composite.nodes} edges={composite.edges} deptById={deptByIdWithPrivate} onOpen={(id) => setSel({ nodes: [id], edges: [] })}
               annotationOf={(id) => data.nodes.find((n) => n.node_id === id)?.custom_annotation} />
           ) : <>
