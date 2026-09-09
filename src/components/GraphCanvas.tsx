@@ -25,8 +25,22 @@ function ensurePlugins() { if (!registered) { cytoscape.use(dagre); cytoscape.us
 export type LayoutName = "cose" | "physics" | "dagre" | "concentric" | "grid" | "preset";
 export interface Selection { nodes: string[]; edges: string[] }
 export type CtxTarget = { kind: "node"; id: string } | { kind: "edge"; id: string } | { kind: "background" };
-export interface PhysicsParams { spacing: number; edgeLength: number; gravity: number; infinite: boolean; dagreDirection: "LR" | "TB" }
-export const DEFAULT_PHYSICS: PhysicsParams = { spacing: 8000, edgeLength: 70, gravity: 0.25, infinite: true, dagreDirection: "LR" };
+export interface PhysicsParams {
+  spacing: number; edgeLength: number; gravity: number; infinite: boolean; dagreDirection: "LR" | "TB";
+  edgeElasticity: number;  // cose: how stiff edges are (higher = shorter, straighter edges)
+  nodeSep: number;         // dagre: spacing between siblings (perpendicular to flow)
+  rankSep: number;         // dagre: spacing between ranks (along the flow direction)
+  ringSpacing: number;     // concentric: pixel width of each ring
+}
+export const DEFAULT_PHYSICS: PhysicsParams = {
+  spacing: 8000, edgeLength: 70, gravity: 0.25, infinite: true, dagreDirection: "LR",
+  edgeElasticity: 100, nodeSep: 18, rankSep: 90, ringSpacing: 2,
+};
+
+export type NodeSizeBy = "none" | "degree" | "eigenvector";
+export type EdgeWidthBy = "weight" | "centrality";
+export interface EncodingParams { nodeSizeBy: NodeSizeBy; nodeSizeScale: number; edgeWidthBy: EdgeWidthBy; edgeWidthScale: number }
+export const DEFAULT_ENCODING: EncodingParams = { nodeSizeBy: "none", nodeSizeScale: 1, edgeWidthBy: "weight", edgeWidthScale: 1 };
 
 export interface GraphCanvasProps {
   nodes: GraphNode[]; edges: GraphEdge[]; deptById: Record<string, Department>;
@@ -38,17 +52,43 @@ export interface GraphCanvasProps {
   physicsParams?: PhysicsParams;
   contextMenuExtra?: (target: CtxTarget, sel: Selection) => ContextMenuItem[];
   communities?: Map<string, number> | null; communityColors?: string[];
-  highlightPath?: string[] | null; sizeByDegree?: boolean;
+  highlightPath?: string[] | null;
+  encoding?: EncodingParams;
+  autoFit?: boolean;   // when true, re-fit the viewport after every layout run and container resize
   onReady?: (cy: Core) => void;
 }
 
 function buildLayoutOptions(name: Exclude<LayoutName, "preset">, phys: PhysicsParams): LayoutOptions {
-  if (name === "cose") return { name: "cose", animate: false, nodeRepulsion: () => phys.spacing, idealEdgeLength: () => phys.edgeLength, gravity: phys.gravity, numIter: 800, padding: 30 } as LayoutOptions;
+  if (name === "cose") return { name: "cose", animate: "end", animationDuration: 500, nodeRepulsion: () => phys.spacing, idealEdgeLength: () => phys.edgeLength, edgeElasticity: () => phys.edgeElasticity, gravity: phys.gravity, numIter: 800, padding: 30 } as LayoutOptions;
   if (name === "physics") return { name: "cola", animate: true, infinite: phys.infinite, fit: false, nodeSpacing: () => phys.spacing / 400, edgeLength: phys.edgeLength, gravity: phys.gravity, avoidOverlap: true, maxSimulationTime: phys.infinite ? Number.MAX_SAFE_INTEGER : 3000, randomize: false, padding: 30 } as unknown as LayoutOptions;
-  if (name === "dagre") return { name: "dagre", rankDir: phys.dagreDirection, nodeSep: 18, rankSep: 90, padding: 30 } as unknown as LayoutOptions;
-  if (name === "concentric") return { name: "concentric", concentric: (n: cytoscape.NodeSingular) => n.degree(false), levelWidth: () => 2, padding: 30, animate: false } as LayoutOptions;
+  if (name === "dagre") return { name: "dagre", rankDir: phys.dagreDirection, nodeSep: phys.nodeSep, rankSep: phys.rankSep, padding: 30 } as unknown as LayoutOptions;
+  if (name === "concentric") return { name: "concentric", concentric: (n: cytoscape.NodeSingular) => n.degree(false), levelWidth: () => phys.ringSpacing, padding: 30, animate: false } as LayoutOptions;
   return { name: "grid", padding: 30 } as LayoutOptions;
 }
+
+// Node "score" (0..1) feeding both node size and (when edgeWidthBy = "centrality") edge width.
+// degree: reuses the same normalised degree centrality already shown in the Explorer's
+// "most connected" panel. eigenvector: cytoscape has no eigenvector-centrality algorithm by
+// name, but pageRank() is the standard analog (same idea: connections to well-connected nodes
+// count more) — normalised here to 0..1 by dividing by the graph's own max rank.
+function computeNodeScores(cy: Core, kind: Exclude<NodeSizeBy, "none">): Map<string, number> {
+  const out = new Map<string, number>();
+  if (kind === "degree") {
+    const dc = cy.elements().degreeCentralityNormalized({ directed: false, weight: () => 1 }) as unknown as { degree: (n: cytoscape.NodeSingular) => number };
+    cy.nodes().forEach((n) => { out.set(n.id(), dc.degree(n)); });
+    return out;
+  }
+  const pr = cy.elements().pageRank({}) as unknown as { rank: (n: cytoscape.NodeCollection) => number };
+  let max = 0;
+  cy.nodes().forEach((n) => { const r = pr.rank(n); out.set(n.id(), r); if (r > max) max = r; });
+  if (max > 0) out.forEach((v, k) => out.set(k, v / max));
+  return out;
+}
+// A "scale" slider as a gamma curve on the 0..1 score: >1 exaggerates the spread between
+// low/high-scoring elements, <1 flattens it toward uniform. Keeps the stylesheet's own
+// mapData() range fixed (see the "sized-score"/"width-score" styles) so moving the slider
+// never needs a full stylesheet rebuild — only the underlying data value changes.
+const gamma = (v: number, scale: number) => (scale > 0 ? Math.pow(Math.max(0, Math.min(1, v)), 1 / scale) : v);
 const isMulti = (ev: cytoscape.EventObject) => { const oe = ev.originalEvent as MouseEvent | undefined; return !!(oe && (oe.ctrlKey || oe.shiftKey || oe.metaKey)); };
 
 export function GraphCanvas(p: GraphCanvasProps) {
@@ -71,7 +111,7 @@ export function GraphCanvas(p: GraphCanvasProps) {
       const comm = p.communities?.get(n.id);
       const color = comm != null && p.communityColors ? p.communityColors[comm % p.communityColors.length] : dept?.color_hex || "#8a8f99";
       const pos = p.positions?.[n.id];
-      els.push({ data: { id: n.id, label: n.label, color, status: n.status, student: (n.provenance?.source as string) === "kgdj" ? 1 : 0, type: n.type_code, deg: degree.get(n.id) || 0 }, classes: n.status + (p.sizeByDegree ? " sized" : "") + (n.provenance?.shared ? " shared" : ""), ...(pos ? { position: { x: pos.x, y: pos.y } } : {}) });
+      els.push({ data: { id: n.id, label: n.label, color, status: n.status, student: (n.provenance?.source as string) === "kgdj" ? 1 : 0, type: n.type_code, deg: degree.get(n.id) || 0 }, classes: n.status + (n.provenance?.shared ? " shared" : ""), ...(pos ? { position: { x: pos.x, y: pos.y } } : {}) });
     }
     const ids = new Set(p.nodes.map((n) => n.id));
     for (const e of p.edges) {
@@ -83,7 +123,10 @@ export function GraphCanvas(p: GraphCanvasProps) {
         container: host.current, elements: els, minZoom: 0.15, maxZoom: 4, wheelSensitivity: 0.25, boxSelectionEnabled: true, selectionType: "single",
         style: [
           { selector: "node", style: { "background-color": "data(color)", label: "data(label)", "font-size": 9, color: "#2a2d33", "text-valign": "bottom", "text-margin-y": 3, "text-wrap": "ellipsis", "text-max-width": "110", width: 16, height: 16, "border-width": 1.5, "border-color": "#fff", "text-background-color": "#fbfbf9", "text-background-opacity": 0.85, "text-background-padding": "1px" } },
-          { selector: "node.sized", style: { width: "mapData(deg, 0, 14, 12, 44)", height: "mapData(deg, 0, 14, 12, 44)" } },
+          // sizeScore/widthScore are written by the encoding effect below, 0..1 already gamma-adjusted
+          // by the user's scale slider — the mapData range here stays fixed on purpose (see gamma()).
+          { selector: "node.sized-score", style: { width: "mapData(sizeScore, 0, 1, 12, 46)", height: "mapData(sizeScore, 0, 1, 12, 46)" } },
+          { selector: "edge.width-score", style: { width: "mapData(widthScore, 0, 1, 0.6, 4.5)" } },
           // proposed / pending-review: dashed; student-authored (source kgdj): double border
           { selector: "node.proposed", style: { "border-style": "dashed", "border-color": "#7a4d9c", "border-width": 2, "background-opacity": 0.75 } },
           { selector: "node.canonical", style: { "border-color": "#1a6b46", "border-width": 2 } },
@@ -117,11 +160,43 @@ export function GraphCanvas(p: GraphCanvasProps) {
       // (or a fast automated click) tries to click an item. ContextMenu's own pointerdown
       // "click outside" check already covers dismissing on a real background tap.
       cy.on("pan zoom", () => setMenu(null));
+      // Fixes nodes loading collapsed/off-screen: a layout's own fit:true fits against whatever
+      // size the container happened to be AT THAT MOMENT, which can be wrong (0-sized, or about
+      // to change as sibling banners/sidebars finish rendering) — re-fitting once the layout
+      // actually settles, and again whenever the container's real size changes (see the
+      // ResizeObserver below), catches both cases without depending on init ordering.
+      cy.on("layoutstop", () => { if (cb.current.autoFit ?? true) cy.animate({ fit: { eles: cy.elements(), padding: 30 }, duration: 300 }); });
       p.onReady?.(cy);
     } else {
+      // Patch in place rather than remove()+add(): this effect re-fires for reasons that have
+      // nothing to do with the graph's actual shape (e.g. a parent re-render handing down a new
+      // deptById object with the same content) — a wholesale wipe-and-re-add on every such firing
+      // silently resets every existing node to cytoscape's un-positioned default, and since the
+      // layout-rerun guard below only looks at node/edge COUNTS, an unchanged count means no
+      // layout ever runs to fix it: the graph looks right for a moment, then collapses to one
+      // overlapping cluster the next time anything else causes a re-render. Only truly new/removed
+      // elements should ever touch position; elements that persist just get fresh data/classes.
       const cy = cyRef.current;
       const keep = cy.$(":selected").map((e) => e.id());
-      cy.batch(() => { cy.elements().remove(); cy.add(els); keep.forEach((id) => cy.getElementById(id).select()); });
+      const nextIds = new Set(els.map((el) => el.data!.id as string));
+      cy.batch(() => {
+        cy.elements().filter((e) => !nextIds.has(e.id())).remove();
+        const toAdd: ElementDefinition[] = [];
+        for (const el of els) {
+          const id = el.data!.id as string;
+          const existing = cy.getElementById(id);
+          if (existing.nonempty()) {
+            existing.data(el.data);
+            // Targeted remove/add, not a full .classes() replace: sized-score/width-score are
+            // owned by the separate encoding effect below (different dependencies, doesn't
+            // necessarily re-fire alongside this one) and must survive this element being patched.
+            const owned = existing.isNode() ? "proposed canonical archived shared" : "proposed canonical archived adopted shared";
+            existing.removeClass(owned).addClass((el.classes as string) ?? "");
+          } else toAdd.push(el);
+        }
+        cy.add(toAdd);
+        keep.forEach((id) => cy.getElementById(id).select());
+      });
     }
     const physics = p.physicsParams ?? DEFAULT_PHYSICS;
     const key = p.layout + ":" + p.nodes.length + ":" + p.edges.length + ":" + JSON.stringify(physics);
@@ -132,7 +207,30 @@ export function GraphCanvas(p: GraphCanvasProps) {
       else { const l = cyRef.current.layout(buildLayoutOptions(p.layout, physics)); runningLayout.current = l; l.run(); }
     }
     emphasise(cyRef.current, p);
-  }, [p.nodes, p.edges, p.deptById, p.layout, p.physicsParams, p.communities, p.communityColors, p.sizeByDegree]);
+  }, [p.nodes, p.edges, p.deptById, p.layout, p.physicsParams, p.communities, p.communityColors]);
+
+  // Node size / edge width by centrality — decoupled from the layout/rebuild effect above so
+  // moving a "scale" slider only restyles (writes new data(), no layout re-run, no position churn).
+  useEffect(() => {
+    const cy = cyRef.current; if (!cy) return;
+    const enc = p.encoding ?? DEFAULT_ENCODING;
+    cy.batch(() => {
+      // One shared score basis: whatever nodeSizeBy asks for, or (if node sizing is off but edge
+      // width still wants centrality) degree as the cheap always-available fallback basis.
+      const scores = enc.nodeSizeBy !== "none" ? computeNodeScores(cy, enc.nodeSizeBy)
+        : enc.edgeWidthBy === "centrality" ? computeNodeScores(cy, "degree") : null;
+
+      if (scores && enc.nodeSizeBy !== "none") cy.nodes().addClass("sized-score").forEach((n) => { n.data("sizeScore", gamma(scores.get(n.id()) ?? 0, enc.nodeSizeScale)); });
+      else cy.nodes().removeClass("sized-score");
+
+      if (scores && enc.edgeWidthBy === "centrality") {
+        cy.edges().addClass("width-score").forEach((e) => {
+          const s = ((scores.get(e.source().id()) ?? 0) + (scores.get(e.target().id()) ?? 0)) / 2;
+          e.data("widthScore", gamma(s, enc.edgeWidthScale));
+        });
+      } else cy.edges().removeClass("width-score");
+    });
+  }, [p.nodes, p.edges, p.encoding]);
 
   // selection + path highlight driven from props (drawer open/closed)
   useEffect(() => {
@@ -153,7 +251,14 @@ export function GraphCanvas(p: GraphCanvasProps) {
   // next to it. A ResizeObserver on the host catches every such case.
   useEffect(() => {
     if (!host.current) return;
-    const ro = new ResizeObserver(() => cyRef.current?.resize());
+    const ro = new ResizeObserver(() => {
+      const cy = cyRef.current; if (!cy) return;
+      cy.resize();
+      // Same rationale as the layoutstop handler above: the container's real size is often not
+      // what it was when the layout last fit the viewport (sidebars/banners still settling right
+      // after mount is the common case) — this is what actually fixes nodes loading off-screen.
+      if (cb.current.autoFit ?? true) cy.fit(undefined, 30);
+    });
     ro.observe(host.current);
     return () => ro.disconnect();
   }, []);

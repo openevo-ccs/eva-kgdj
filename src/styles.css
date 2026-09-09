@@ -80,6 +80,7 @@ th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: 
 .explorer { display: grid; grid-template-rows: auto auto auto auto 1fr; height: 100%; }
 .explorer > .explorer-body { grid-row: 5; }
 .explorer-body { display: grid; grid-template-columns: 1fr auto; min-height: 0; }
+.explorer-body.with-sidebar { grid-template-columns: auto 1fr auto; }
 .graph-host { position: relative; min-height: 0; background: #fbfbf9; }
 .graph-canvas { position: absolute; inset: 0; outline: none; }
 .legend { position: absolute; left: 10px; bottom: 10px; display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: 11px; background: rgba(255,255,255,0.9); padding: 6px 10px; border-radius: 8px; border: 1px solid var(--border); max-width: calc(100% - 20px); }
@@ -93,6 +94,19 @@ th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: 
 .drawer-handle:hover { background: var(--mpi-brand-accent); opacity: 0.3; }
 .drawer-collapse { position: absolute; right: 6px; top: 6px; z-index: 6; }
 .drawer-rail { width: 32px; border-left: 1px solid var(--border); background: var(--surface-1); display: flex; align-items: flex-start; justify-content: center; padding-top: 6px; }
+/* left-side variant (the Explorer's filter/layout sidebar): mirror the border and handle/collapse
+   positions so the resize handle and collapse chevron sit on the panel's inner (right) edge. */
+.drawer-shell-left { border-left: 0; border-right: 1px solid var(--border); }
+.drawer-shell-left .drawer-handle { left: auto; right: -3px; }
+.drawer-shell-left .drawer-collapse { right: auto; left: 6px; }
+/* the collapse button sits over the sidebar's own top-left corner (unlike the right-side
+   drawer, whose content starts flush left with the button anchored at the opposite, right,
+   corner) — give the content enough top clearance that its first line doesn't run under it. */
+.drawer-shell-left .drawer { padding-top: 38px; }
+.drawer-rail-left { border-left: 0; border-right: 1px solid var(--border); }
+.sidebar-sep { height: 1px; background: var(--border); margin: 12px 0; }
+.sidebar-section { margin-bottom: 4px; }
+.sidebar-section > b { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-muted); margin-bottom: 6px; }
 .tabs { display: flex; gap: 4px; margin: 8px 0; flex-wrap: wrap; }
 .tabs button { padding: 4px 10px; border-radius: 8px; border: 1px solid var(--border); background: #fff; cursor: pointer; font-size: 12px; }
 .tabs button.active { background: var(--mpi-teal-soft); border-color: var(--mpi-brand-accent); color: var(--mpi-teal); }
@@ -166,4 +180,4 @@ th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: 
 .commons-item { display: flex; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-1); }
 .commons-icon { width: 26px; height: 26px; border-radius: 50%; background: var(--mpi-teal-soft); color: var(--mpi-teal); display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0; }
 
-@media (max-width: 900px) { .explorer-body, .two-col { grid-template-columns: 1fr; grid-template-rows: 1fr auto; } .drawer-shell, .drawer-rail { border-left: 0; border-top: 1px solid var(--border); max-height: 45%; width: auto !important; } .drawer { border-left: 0; border-top: 1px solid var(--border); max-height: 45%; } .popover { width: 300px; } }
+@media (max-width: 900px) { .explorer-body, .two-col { grid-template-columns: 1fr; grid-template-rows: auto 1fr auto; } .drawer-shell, .drawer-rail, .drawer-shell-left, .drawer-rail-left { border-left: 0; border-right: 0; border-top: 1px solid var(--border); max-height: 45%; width: auto !important; } .drawer { border-left: 0; border-top: 1px solid var(--border); max-height: 45%; } .popover { width: 300px; } }

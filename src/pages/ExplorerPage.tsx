@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type cytoscape from "cytoscape";
 import type { Core } from "cytoscape";
-import { GraphCanvas, connectingSubgraph, edgesAmong, fitGraph, neighbourhood, clearSelection, type CtxTarget, type LayoutName, type PhysicsParams, type Selection } from "../components/GraphCanvas";
+import { GraphCanvas, connectingSubgraph, edgesAmong, fitGraph, neighbourhood, clearSelection, type CtxTarget, type EncodingParams, type LayoutName, type PhysicsParams, type Selection } from "../components/GraphCanvas";
 import type { ContextMenuItem } from "../components/ContextMenu";
 import { LayoutPicker, loadGraphPrefs } from "../components/LayoutPicker";
 import { ResizableDrawer } from "../components/ResizableDrawer";
@@ -34,6 +34,8 @@ export default function ExplorerPage() {
   const prefs = useMemo(loadGraphPrefs, []);
   const [layout, setLayout] = useState<LayoutName>(prefs.layout);
   const [physics, setPhysics] = useState<PhysicsParams>(prefs.physics);
+  const [encoding, setEncoding] = useState<EncodingParams>(prefs.encoding);
+  const [autoFit, setAutoFit] = useState(prefs.autoFit);
   const [analysis, setAnalysis] = useState<Analysis>("none");
   const [pathFrom, setPathFrom] = useState<string | null>(null);
   const [path, setPath] = useState<string[] | null>(null);
@@ -139,19 +141,8 @@ export default function ExplorerPage() {
 
   return (
     <div className="explorer" style={{ flex: 1, minWidth: 0 }}>
-      <div className="toolbar" data-tour="filters">
-        <Tip text="Search labels, descriptions and tags of the visible nodes"><input type="search" placeholder="Search nodes…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search nodes" /></Tip>
-        {departments.map((d) => <Tip key={d.id} text={`${d.name}: show or hide its nodes`}><label><input type="checkbox" checked={depts.has(d.id)} onChange={() => toggle(depts, d.id, setDepts)} /><span className="dept-sw" style={{ background: d.color_hex || "#999" }} />{d.abbr}</label></Tip>)}
-        <span className="muted">|</span>
-        {["canonical", "proposed"].map((s) => <Tip key={s} text={s === "canonical" ? "Nodes and edges an editor has promoted after identified review" : "Imported seed and submitted proposals still awaiting review (drawn dashed)"}><label><input type="checkbox" checked={statuses.has(s)} onChange={() => toggle(statuses, s, setStatuses)} />{s}</label></Tip>)}
-        <span className="muted">|</span>
-        {allTypes.map((t) => <Tip key={t} text={`Show or hide nodes of type "${t}"`}><label><input type="checkbox" checked={types.has(t)} onChange={() => toggle(types, t, setTypes)} />{t}</label></Tip>)}
-        <span className="muted">|</span>
-        <LayoutPicker layout={layout} onLayout={setLayout} physics={physics} onPhysics={setPhysics} />
-        <span className="seg" role="group" aria-label="Graph analysis"><span className="seg-label">analysis <Help text="Analyses run on the nodes currently visible (after your filters). Centrality: node size = connections. Communities: colour = cluster. Shortest path: click two nodes." /></span>
-          {ANALYSIS.map((a) => <Tip key={a.key} text={a.tip}><button className={analysis === a.key ? "active" : ""} onClick={() => { setAnalysis(a.key); setPath(null); setPathFrom(null); }}>{a.label}</button></Tip>)}
-        </span>
-        <Tip text="Fit the whole graph in view (or the selection, if any)"><button className="btn" onClick={() => fitGraph(cyRef.current, true)}>Fit</button></Tip>
+      <div className="toolbar">
+        <Tip text="Fit the whole graph in view now (or the selection, if any) — separate from the auto-fit toggle in the sidebar"><button className="btn" onClick={() => fitGraph(cyRef.current, true)}>Fit now</button></Tip>
         <span className="muted">{visible.nodes.length} nodes · {visible.edges.length} edges</span>
       </div>
       {(active.explain || analysis === "path") && <div className="subbar">
@@ -177,10 +168,51 @@ export default function ExplorerPage() {
         <button className="btn" onClick={() => clearSelection(cyRef.current)}>Clear</button>
       </div>}
       {notice && <div className={`notice notice-${notice.kind}`} style={{ margin: "6px 12px 0" }}>{notice.text} {notice.link && <Link to={notice.link}>Open portfolio →</Link>} <button className="btn btn-mini" onClick={() => setNotice(null)} style={{ marginLeft: 8 }}>×</button></div>}
-      <div className="explorer-body">
+      <div className="explorer-body with-sidebar">
+        <div data-tour="filters">
+          <ResizableDrawer side="left" storageKey="kgdj.leftbar" min={220} max={420} defaultWidth={280}>
+            <div className="drawer">
+              <div className="sidebar-section">
+                <b>Search</b>
+                <Tip text="Search labels, descriptions and tags of the visible nodes" block><input type="search" placeholder="Search nodes…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search nodes" style={{ width: "100%" }} /></Tip>
+              </div>
+              <div className="sidebar-sep" />
+              <div className="sidebar-section">
+                <b>Departments</b>
+                <div className="toolbar" style={{ border: 0, padding: 0 }}>
+                  {departments.map((d) => <Tip key={d.id} text={`${d.name}: show or hide its nodes`}><label><input type="checkbox" checked={depts.has(d.id)} onChange={() => toggle(depts, d.id, setDepts)} /><span className="dept-sw" style={{ background: d.color_hex || "#999" }} />{d.abbr}</label></Tip>)}
+                </div>
+              </div>
+              <div className="sidebar-section">
+                <b>Status</b>
+                <div className="toolbar" style={{ border: 0, padding: 0 }}>
+                  {["canonical", "proposed"].map((s) => <Tip key={s} text={s === "canonical" ? "Nodes and edges an editor has promoted after identified review" : "Imported seed and submitted proposals still awaiting review (drawn dashed)"}><label><input type="checkbox" checked={statuses.has(s)} onChange={() => toggle(statuses, s, setStatuses)} />{s}</label></Tip>)}
+                </div>
+              </div>
+              <div className="sidebar-section">
+                <b>Types</b>
+                <div className="toolbar" style={{ border: 0, padding: 0 }}>
+                  {allTypes.map((t) => <Tip key={t} text={`Show or hide nodes of type "${t}"`}><label><input type="checkbox" checked={types.has(t)} onChange={() => toggle(types, t, setTypes)} />{t}</label></Tip>)}
+                </div>
+              </div>
+              <div className="sidebar-sep" />
+              <div className="sidebar-section">
+                <b>Analysis</b> <Help text="Analyses run on the nodes currently visible (after your filters). Communities: colour = cluster. Shortest path: click two nodes. Node sizing by centrality is a separate control below, in Layout." />
+                <div className="toolbar" style={{ border: 0, padding: 0 }}>
+                  {ANALYSIS.map((a) => <Tip key={a.key} text={a.tip}><button className={"btn btn-mini" + (analysis === a.key ? " active" : "")} onClick={() => { setAnalysis(a.key); setPath(null); setPathFrom(null); }}>{a.label}</button></Tip>)}
+                </div>
+              </div>
+              <div className="sidebar-sep" />
+              <div className="sidebar-section">
+                <b>Layout</b>
+                <LayoutPicker layout={layout} onLayout={setLayout} physics={physics} onPhysics={setPhysics} encoding={encoding} onEncoding={setEncoding} autoFit={autoFit} onAutoFit={setAutoFit} inline />
+              </div>
+            </div>
+          </ResizableDrawer>
+        </div>
         <div className="graph-host" data-tour="canvas">
           <GraphCanvas nodes={visible.nodes} edges={visible.edges} deptById={deptById} layout={layout} physicsParams={physics} selectedId={nodeId ?? null} onSelect={select} selectedEdgeId={edgeId} onSelectEdge={selectEdge} onSelectionChange={setSel}
-            contextMenuExtra={contextMenuExtra} communities={communities} communityColors={COMMUNITY_COLORS} highlightPath={path} sizeByDegree={analysis === "degree"}
+            contextMenuExtra={contextMenuExtra} communities={communities} communityColors={COMMUNITY_COLORS} highlightPath={path} encoding={encoding} autoFit={autoFit}
             onReady={(cy) => { cyRef.current = cy; if (new URLSearchParams(window.location.search).get("debug")) (window as unknown as { __cy?: Core }).__cy = cy; }} />
           <div className="legend">
             <Tip text="Promoted by an editor after identified review"><span><span className="dept-sw" style={{ background: "#fff", border: "2px solid #1a6b46" }} />canonical</span></Tip>

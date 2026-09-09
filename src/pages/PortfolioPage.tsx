@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import type { Core } from "cytoscape";
-import { GraphCanvas, fitGraph, type CtxTarget, type LayoutName, type PhysicsParams, type Selection } from "../components/GraphCanvas";
+import { GraphCanvas, fitGraph, type CtxTarget, type EncodingParams, type LayoutName, type PhysicsParams, type Selection } from "../components/GraphCanvas";
 import type { ContextMenuItem } from "../components/ContextMenu";
 import { LayoutPicker, loadGraphPrefs } from "../components/LayoutPicker";
 import { ResizableDrawer } from "../components/ResizableDrawer";
@@ -35,6 +35,8 @@ export default function PortfolioPage() {
   const prefs = useMemo(loadGraphPrefs, []);
   const [layout, setLayout] = useState<LayoutName>("preset");
   const [physics, setPhysics] = useState<PhysicsParams>(prefs.physics);
+  const [encoding, setEncoding] = useState<EncodingParams>(prefs.encoding);
+  const [autoFit, setAutoFit] = useState(prefs.autoFit);
   const layoutInit = useRef(false);
   const [, setBackupTick] = useState(0); const [reportBusy, setReportBusy] = useState(false);
   const pending = useRef<Record<string, { x: number; y: number }>>({}); const saveTimer = useRef<number | null>(null);
@@ -163,8 +165,8 @@ export default function PortfolioPage() {
           <Tip text={VIS_TIP[sg.visibility]}><select value={sg.visibility} onChange={async (e) => { await api.setVisibility(sg.id, e.target.value as Visibility); load(); }} aria-label="Visibility"><option value="private">private</option><option value="shared">shared (listed people)</option><option value="module">module</option><option value="members">all members</option></select></Tip>
           <Tip text="Give one classmate access (and the right to critique) by username"><input placeholder="share with username" value={shareWith} onChange={(e) => setShareWith(e.target.value)} style={{ width: 150 }} /></Tip><button className="btn" onClick={async () => { try { await api.share(sg.id, shareWith); setShareWith(""); setOk(`Shared with ${shareWith}.`); } catch (e) { setErr((e as Error).message); } }}>share</button>
         </>}
-        <LayoutPicker layout={layout} onLayout={setLayout} physics={physics} onPhysics={setPhysics} allowPreset />
-        <Tip text="Fit the whole portfolio in view"><button className="btn" onClick={() => fitGraph(cy)}>Fit</button></Tip>
+        <LayoutPicker layout={layout} onLayout={setLayout} physics={physics} onPhysics={setPhysics} encoding={encoding} onEncoding={setEncoding} autoFit={autoFit} onAutoFit={setAutoFit} allowPreset />
+        <Tip text="Fit the whole portfolio in view now — separate from the auto-fit toggle in layout options"><button className="btn" onClick={() => fitGraph(cy)}>Fit</button></Tip>
         {mine && <span className="row" data-tour="backup" style={{ marginLeft: "auto", gap: 6 }}>
           <Tip text="Download this portfolio as a JSON file you keep yourself. Restore it from the portfolios list at any time." place="bottom"><button className={"btn " + (fresh ? "btn-ok" : "btn-warn")} onClick={doBackup}>⬇ Download backup</button></Tip>
           <Tip text="Self-contained HTML report: your portfolio's shape compared with anonymised aggregates of your module and the MSc program, plus one suggestion per dimension." place="bottom"><button className="btn" disabled={reportBusy} onClick={doReport}>{reportBusy ? "…" : "⬇ Download report"}</button></Tip>
@@ -179,7 +181,7 @@ export default function PortfolioPage() {
       {(err || ok) && <div className={`notice ${err ? "notice-bad" : "notice-ok"}`} style={{ margin: "6px 12px 0" }}>{err || ok} <button className="btn btn-mini" onClick={() => { setErr(null); setOk(null); }} style={{ marginLeft: 8 }}>×</button></div>}
       <div className="explorer-body">
         <div className="graph-host">
-          <GraphCanvas nodes={composite.nodes} edges={composite.edges} deptById={deptByIdWithPrivate} layout={layout} physicsParams={physics} positions={positions}
+          <GraphCanvas nodes={composite.nodes} edges={composite.edges} deptById={deptByIdWithPrivate} layout={layout} physicsParams={physics} positions={positions} encoding={encoding} autoFit={autoFit}
             selectedId={null} onSelect={() => {}} selectedEdgeId={null} onSelectEdge={() => {}} onSelectionChange={setSel} contextMenuExtra={contextMenuExtra} onDragEnd={onDragEnd}
             onReady={(c) => { setCy(c); if (new URLSearchParams(window.location.search).get("debug")) (window as unknown as { __cy?: Core }).__cy = c; }} />
           <div className="legend">{Object.entries(PRIVATE_COLORS).map(([t, c]) => <Tip key={t} text={PRIVATE_TYPE_HELP[t as PrivateNodeType]}><span><span className="dept-sw" style={{ background: c }} />{t}</span></Tip>)}<Tip text="Your own connection ('because' sentence)"><span><span className="dept-sw" style={{ background: "#fff", border: "2px solid #8fb8a3" }} />your connection</span></Tip><Tip text="Adopted from a canonical edge; rewrite the wording in your own words"><span><span className="dept-sw" style={{ background: "#fff", border: "2px solid #1a6b46" }} />adopted canonical edge</span></Tip><Tip text="A canonical edge between two of your nodes that you have not adopted yet — click it to adopt, or right-click for options"><span><span className="dept-sw" style={{ background: "#fff", border: "2px dashed #7a4d9c" }} />canonical context</span></Tip><Tip text="Shared with your module — visible to classmates even though the rest of the portfolio is private"><span><span className="dept-sw" style={{ background: "#fff", border: "2px solid #e2841e" }} />shared with module</span></Tip>{mine && <span className="muted">drag to arrange · right-click for quick actions · Ctrl+click to select several</span>}</div>
