@@ -23,6 +23,18 @@ export default function CommonsPage() {
   useEffect(() => { load(); }, [moduleId]);
   const filtered = useMemo(() => items.filter((it) => kind === "all" || it.kind === kind), [items, kind]);
   const byOwner = useMemo(() => { const m = new Map<string, number>(); items.forEach((it) => m.set(it.owner_username, (m.get(it.owner_username) || 0) + 1)); return m; }, [items]);
+  // Two members can independently share their own take on the same canonical node — that
+  // convergence is exactly the point of putting differently-focused students in one commons,
+  // but a flat chronological feed scatters it apart. Pull those groups to the top; everything
+  // else (single-owner shares, own ideas, connections) stays the plain chronological feed below.
+  const { converged, flat } = useMemo(() => {
+    const byNode = new Map<string, CommonsItem[]>();
+    for (const it of filtered) if (it.kind === "node" && it.node_id) { const arr = byNode.get(it.node_id); if (arr) arr.push(it); else byNode.set(it.node_id, [it]); }
+    const convergedIds = new Set([...byNode.entries()].filter(([, v]) => v.length > 1).map(([k]) => k));
+    const converged = [...byNode.values()].filter((v) => v.length > 1).map((v) => v.slice().sort((a, b) => a.shared_at.localeCompare(b.shared_at)));
+    const flat = filtered.filter((it) => !(it.kind === "node" && it.node_id && convergedIds.has(it.node_id)));
+    return { converged, flat };
+  }, [filtered]);
 
   return (
     <div className="page page-narrow">
@@ -35,8 +47,25 @@ export default function CommonsPage() {
           {(["all", "node", "private_node", "link"] as const).map((k) => <button key={k} className={kind === k ? "active" : ""} onClick={() => setKind(k)}>{k === "all" ? "everything" : KIND_LABEL[k]}</button>)}
         </span>
       </div>
-      {loading ? <p className="muted">Loading…</p> : filtered.length ? <div className="commons-list">
-        {filtered.map((it, i) => <div className="commons-item" key={i}>
+      {loading ? <p className="muted">Loading…</p> : filtered.length ? <>
+        {converged.length > 0 && <div className="commons-list" style={{ marginBottom: 18 }}>
+          <p className="muted" style={{ margin: "0 0 6px" }}>Shared independently by more than one member — worth reading together:</p>
+          {converged.map((group) => <div className="commons-item" key={group[0].node_id}>
+            <div className="commons-icon" title="Shared by multiple members">◉</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="row" style={{ justifyContent: "space-between" }}>
+                <b>{group[0].label}</b>
+                <span className="chip">{group.length} members</span>
+              </div>
+              <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
+                {group.map((it, i) => <li key={i}><Link to={`/portfolio/${it.subgraph_id}`}>{it.owner_username}</Link>{it.sub_label && <>: {it.sub_label}</>} <span className="muted">· {ago(it.shared_at)}</span></li>)}
+              </ul>
+              {group[0].node_id && <div className="row" style={{ marginTop: 6 }}><Link className="btn btn-mini" to={`/explore/${group[0].node_id}`}>canonical node →</Link></div>}
+            </div>
+          </div>)}
+        </div>}
+        <div className="commons-list">
+        {flat.map((it, i) => <div className="commons-item" key={i}>
           <div className="commons-icon" title={KIND_LABEL[it.kind]}>{KIND_ICON[it.kind]}</div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div className="row" style={{ justifyContent: "space-between" }}>
@@ -52,7 +81,8 @@ export default function CommonsPage() {
             </div>
           </div>
         </div>)}
-      </div> : <p className="muted">Nothing shared into {moduleId ? "this module" : "your modules"} yet. Share a node, connection or cluster from your own portfolio to start the commons.</p>}
+        </div>
+      </> : <p className="muted">Nothing shared into {moduleId ? "this module" : "your modules"} yet. Share a node, connection or cluster from your own portfolio to start the commons.</p>}
     </div>
   );
 }

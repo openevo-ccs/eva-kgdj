@@ -111,7 +111,14 @@ export default function PortfolioPage() {
         <Tip text="Restore a portfolio from a backup file you downloaded earlier (creates a new portfolio)"><label className="btn">Restore from backup…<input type="file" accept="application/json,.json" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) restore(f); e.target.value = ""; }} /></label></Tip>
       </div>
       {err && <div className="notice notice-bad" style={{ marginTop: 8 }}>{err}</div>}
-      <table style={{ marginTop: 12 }}><thead><tr><th>Title</th><th>Owner</th><th>Visibility</th><th>Last backup (this browser)</th><th>Created</th></tr></thead><tbody>{list.map((g) => <tr key={g.id}><td><Link to={`/portfolio/${g.id}`}>{g.title}</Link></td><td>{g.owner_id === profile?.id ? "you" : "member"}</td><td>{g.visibility}</td><td className="muted">{g.owner_id === profile?.id ? ago(lastBackupAt(g.id)) : "—"}</td><td className="muted">{new Date(g.created_at).toLocaleDateString()}</td></tr>)}{!list.length && <tr><td colSpan={5} className="muted">No portfolios visible to you yet. Create one above, or add nodes from the Graph tab.</td></tr>}</tbody></table>
+      <table style={{ marginTop: 12 }}><thead><tr><th>Title</th><th>Owner</th><th>Why you can see this</th><th>Last backup (this browser)</th><th>Created</th></tr></thead><tbody>{list.map((g) => { const mine = g.owner_id === profile?.id;
+        // A non-owner only ever reaches a "private" row via an instructor role, a direct
+        // username share, or one shared item (see kgdj.can_see_subgraph / visibleViaSharedItem) —
+        // none of those are "private" from the viewer's own seat, so showing the literal
+        // visibility value here (as the code used to) read as a contradiction: "why do I see a
+        // portfolio marked private that isn't mine?" This names the actual reason instead.
+        const why = mine ? "—" : g.visibility === "module" ? "your module" : g.visibility === "members" ? "all members" : "shared with you";
+        return <tr key={g.id}><td><Link to={`/portfolio/${g.id}`}>{g.title}</Link></td><td>{mine ? "you" : "member"}</td><td>{why}</td><td className="muted">{mine ? ago(lastBackupAt(g.id)) : "—"}</td><td className="muted">{new Date(g.created_at).toLocaleDateString()}</td></tr>; })}{!list.length && <tr><td colSpan={5} className="muted">No portfolios visible to you yet. Create one above, or add nodes from the Graph tab.</td></tr>}</tbody></table>
     </div>
   );
   if (!data) return <div className="page">{err ? <div className="notice notice-bad">{err}</div> : <span className="muted">Loading…</span>}</div>;

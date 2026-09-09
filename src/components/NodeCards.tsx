@@ -33,7 +33,7 @@ export function NodeCards({ nodes, edges, deptById, onOpen, annotationOf, inPort
             </div>
             <div className="row" style={{ marginTop: 4, marginBottom: 6 }}>
               <StatusChip status={n.status} />
-              <span className="chip">{n.type_code}</span>
+              <span className={n.type_code === "scicomm-sensitivity" ? "chip chip-scicomm" : "chip"} title={n.type_code === "scicomm-sensitivity" ? "Touches a live science-communication sensitivity — read the description before quoting this publicly." : undefined}>{n.type_code}</span>
               {dept && <span className="chip">{dept.abbr}</span>}
               {n.provenance?.shared ? <span className="chip" style={{ color: "#e2841e", borderColor: "#f0d3a8" }}>shared</span> : null}
               {inPortfolioIds?.has(n.id) && <span className="chip chip-verified">in your portfolio</span>}

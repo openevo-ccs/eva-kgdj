@@ -4,6 +4,12 @@ import type { GraphNode, Proposal, ReviewFlag, ReviewSummary } from "../lib/type
 import { CHANGE_LABEL } from "../lib/types";
 import { useApi, useSession } from "../state/session";
 import { DeptSwatch, StatusChip } from "../components/Chips";
+import { Tip } from "../components/Tip";
+
+// A mean near 0 can mean "reviewers are lukewarm" or "reviewers actively disagree" — those call
+// for different editorial responses (more reviews vs. a synthesis conversation) and the mean
+// alone can't tell them apart. The rating-count breakdown ReviewSummary already carries can.
+const disagrees = (s?: ReviewSummary) => !!s && s.strongly_accept + s.accept > 0 && s.reject + s.strongly_reject > 0;
 
 export default function EditorialPage() {
   const api = useApi(); const { deptById } = useSession();
@@ -37,7 +43,7 @@ export default function EditorialPage() {
         <table><thead><tr><th>Target</th><th>Reason</th><th>Raised</th><th></th></tr></thead><tbody>{flags.map((f) => <tr key={f.id}><td>{f.target_kind} <Link to={f.target_kind === "node" ? `/explore/${f.target_id}` : `/proposals/${f.target_id}`}>{f.target_id.slice(0, 8)}…</Link></td><td>{f.reason.replace(/_/g, " ")}</td><td className="muted">{new Date(f.raised_at).toLocaleDateString()}</td><td><input placeholder="note" value={note} onChange={(e) => setNote(e.target.value)} style={{ width: 160 }} /> <button className="btn" onClick={async () => { await api.resolveFlag(f.id, note); setNote(""); load(); }}>resolve</button></td></tr>)}</tbody></table></div>}
       <div className="card"><h2>Proposals awaiting decision</h2>
         <table><thead><tr><th>Change</th><th>Status</th><th>Reviews</th><th>Mean</th><th>Credible</th><th>Updated</th></tr></thead>
-          <tbody>{queue.proposals.map((p) => { const s = queue.summaries[p.id]; return <tr key={p.id}><td><Link to={`/proposals/${p.id}`}>{CHANGE_LABEL[p.change_type]}</Link><div className="muted">{p.rationale.slice(0, 90)}…</div></td><td><StatusChip status={p.status} /></td><td>{s?.n_reviews ?? 0}</td><td>{s?.mean_score ?? "—"}</td><td>{s ? (s.all_reviewers_deleted ? <span className="chip chip-flag">none</span> : s.credible_reviews) : "—"}</td><td className="muted">{new Date(p.updated_at).toLocaleDateString()}</td></tr>; })}
+          <tbody>{queue.proposals.map((p) => { const s = queue.summaries[p.id]; return <tr key={p.id}><td><Link to={`/proposals/${p.id}`}>{CHANGE_LABEL[p.change_type]}</Link><div className="muted">{p.rationale.slice(0, 90)}…</div></td><td><StatusChip status={p.status} /></td><td>{s?.n_reviews ?? 0}</td><td>{s?.mean_score ?? "—"} {disagrees(s) && <Tip text="Reviewers didn't just land near the middle — at least one accepted and at least one rejected. Probably wants a synthesis conversation, not just more reviews."><span className="chip chip-flag">disagree</span></Tip>}</td><td>{s ? (s.all_reviewers_deleted ? <span className="chip chip-flag">none</span> : s.credible_reviews) : "—"}</td><td className="muted">{new Date(p.updated_at).toLocaleDateString()}</td></tr>; })}
             {!queue.proposals.length && <tr><td colSpan={6} className="muted">Nothing waiting.</td></tr>}</tbody></table></div>
       <div className="card"><h2>Seed nodes with reviews — ready to promote?</h2><p className="muted">The imported mpi-eva-graph nodes are single-pass drafts. Promote when you judge the identified reviews sufficient; archive what should not enter the journal.</p>
         <table><thead><tr><th>Node</th><th>Reviews</th><th>Mean</th><th>Credible</th><th></th></tr></thead>

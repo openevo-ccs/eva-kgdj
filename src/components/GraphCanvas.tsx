@@ -141,6 +141,11 @@ export function GraphCanvas(p: GraphCanvasProps) {
           { selector: "node.dim", style: { opacity: 0.18 } },
           { selector: "node.path", style: { "border-color": "#d42a3c", "border-width": 4, "background-blacken": -0.1 } },
           { selector: "node.shared", style: { "border-color": "#e2841e" } },
+          // A gentle, always-on halo (not an alarm colour) marking scicomm-sensitivity nodes —
+          // topics that need care in how they're described publicly (e.g. "percent Neanderthal"
+          // popular narratives, "language death" deficit framing). Distinct from selection's teal
+          // overlay and shortest-path's red so the three never read as the same kind of signal.
+          { selector: 'node[type = "scicomm-sensitivity"]', style: { "underlay-color": "#c9932e", "underlay-opacity": 0.28, "underlay-padding": 4 } },
           { selector: "edge", style: { width: "mapData(weight, 0, 5, 0.6, 3)", "line-color": "#b9bcc4", "target-arrow-color": "#b9bcc4", "target-arrow-shape": "triangle", "arrow-scale": 0.7, "curve-style": "bezier", "font-size": 7, color: "#6b7280", "text-rotation": "autorotate", "text-background-color": "#fbfbf9", "text-background-opacity": 0.8 } },
           { selector: "edge.proposed", style: { "line-style": "dashed", "line-color": "#c9b6dc", "target-arrow-color": "#c9b6dc" } },
           { selector: "edge.canonical", style: { "line-color": "#8fb8a3", "target-arrow-color": "#8fb8a3" } },

@@ -210,7 +210,7 @@ export class MockApi implements Api {
        "The node that keeps me honest: 'percent Neanderthal' framing slides very easily into ancestry essentialism, and my own question is one bad headline away from doing exactly that.",
        "Linh's linguistics portfolio has a version of this same question from the other side — worth reading together, not separately.",
        "The theoretical bridge my whole portfolio is implicitly leaning on: genes and culture are not two separate evolutionary tracks."],
-      { node: [7], own: [1], link: [6] });
+      { node: [7, 8], own: [1], link: [6] });
 
     // Bram — primatology: chimpanzee culture, teaching, and whether cooperation research travels across species
     const bram = mk("u-student2", "Bram: culture, teaching, and what counts as correction",
@@ -230,7 +230,7 @@ export class MockApi implements Api {
        "My hinge, basically: does teaching require reading intentions, or can culture spread through simpler biases without any mind-reading at all?",
        "Teaching, defined as intentionally structuring another's learning, plausibly needs some minimal mind-reading — exactly what the ToM node is about.",
        "Sofia's child-development portfolio has the human side of this; comparing early attachment across primates keeps me honest about what's actually human-specific."],
-      { node: [0], own: [1], link: [2] });
+      { node: [0, 8], own: [1], link: [2] });
     bram.visibility = "module";
 
     // Linh — linguistics: whether phylogenetic method actually tests what it claims to, and the ethics of tree-thinking about living languages
@@ -295,7 +295,7 @@ export class MockApi implements Api {
        "The HBEC node that most directly challenges a WEIRD-default developmental timeline — worth reading against my own question.",
        "The standard experimental tasks are well validated in a narrow set of populations; I don't yet know how much that limits what they can tell me.",
        "Bram's primatology portfolio has the comparative case; keeping his attachment question next to mine stops me from over-crediting humans with something more general to primates."],
-      { node: [6], own: [2], link: [4] });
+      { node: [6, 8], own: [2], link: [4] });
     sofia.visibility = "module";
 
     // Amara's whole (private) portfolio, shared directly with Priya by name — the other access

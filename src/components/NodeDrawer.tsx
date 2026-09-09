@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import type { GraphNode, NodeDetail, Subgraph } from "../lib/types";
+import type { CommonsItem, GraphNode, NodeDetail, Subgraph } from "../lib/types";
 import { CHANGE_LABEL } from "../lib/types";
 import { isEditor, useApi, useSession } from "../state/session";
 import { DeptSwatch, ProvenanceChip, StatusChip } from "./Chips";
@@ -10,7 +10,7 @@ import { Help, Tip } from "./Tip";
 type Tab = "about" | "reviews" | "propose" | "add";
 const TAB_TIP: Record<Tab, string> = { about: "Description, citations, connections and open proposals", reviews: "Read reviews and write your own (identified)", propose: "Propose an edit, a new connection, or archival — goes through peer review", add: "Fork this node into your portfolio with your own annotation" };
 
-export function NodeDrawer({ nodeId, nodesById, inPortfolio, onClose, onChanged }: { nodeId: string; nodesById: Record<string, GraphNode>; inPortfolio?: boolean; onClose: () => void; onChanged: () => void }) {
+export function NodeDrawer({ nodeId, nodesById, inPortfolio, sharedByClassmates, onClose, onChanged }: { nodeId: string; nodesById: Record<string, GraphNode>; inPortfolio?: boolean; sharedByClassmates?: CommonsItem[]; onClose: () => void; onChanged: () => void }) {
   const api = useApi(); const { profile, deptById, myModules } = useSession();
   const [d, setD] = useState<NodeDetail | null>(null);
   const [tab, setTab] = useState<Tab>("about");
@@ -26,7 +26,7 @@ export function NodeDrawer({ nodeId, nodesById, inPortfolio, onClose, onChanged 
   return (
     <div className="drawer">
       <div className="row" style={{ justifyContent: "space-between" }}><h2><DeptSwatch dept={dept} />{n.label}</h2><Tip text="Close (Esc)"><button className="btn" onClick={onClose} aria-label="Close">×</button></Tip></div>
-      <div className="row"><StatusChip status={n.status} /><Tip text="Node type"><span className="chip">{n.type_code}</span></Tip><ProvenanceChip prov={n.provenance} status={n.status} /><Tip text="Version: increases with every approved edit"><span className="muted">v{n.version}</span></Tip>{inPortfolio && <Tip text="This node is already in one of your portfolios"><span className="chip chip-verified">in your portfolio</span></Tip>}</div>
+      <div className="row"><StatusChip status={n.status} /><Tip text={n.type_code === "scicomm-sensitivity" ? "Touches a live science-communication sensitivity — read the description before quoting this publicly." : "Node type"}><span className={n.type_code === "scicomm-sensitivity" ? "chip chip-scicomm" : "chip"}>{n.type_code}</span></Tip><ProvenanceChip prov={n.provenance} status={n.status} /><Tip text="Version: increases with every approved edit"><span className="muted">v{n.version}</span></Tip>{inPortfolio && <Tip text="This node is already in one of your portfolios"><span className="chip chip-verified">in your portfolio</span></Tip>}</div>
       {d.flags.length > 0 && <div className="notice notice-bad" style={{ marginTop: 8 }}>⚑ {d.flags[0].reason.replace(/_/g, " ")} — this record needs a fresh identified review before promotion.</div>}
       <div className="tabs">{(["about", "reviews", "propose", "add"] as const).map((t) => <Tip key={t} text={TAB_TIP[t]} place="bottom"><button className={tab === t ? "active" : ""} onClick={() => setTab(t)}>{t === "reviews" ? `reviews (${d.reviews.length})` : t === "add" ? "add to my portfolio" : t}</button></Tip>)}</div>
 
@@ -38,6 +38,10 @@ export function NodeDrawer({ nodeId, nodesById, inPortfolio, onClose, onChanged 
         <h3>Connections ({d.edges.length}) <Help text="Edges touching this node. → means this node is the source, ← the target. Click one to open the edge." /></h3>
         <ul>{d.edges.slice(0, 40).map((e) => { const other = e.source_node_id === n.id ? e.target_node_id : e.source_node_id; const o = nodesById[other]; return <li key={e.id}>{e.source_node_id === n.id ? "→" : "←"} <Link to={`/explore?edge=${e.id}`}><i>{e.relationship_code}</i></Link> <Link to={`/explore/${other}`}>{o ? o.label : other}</Link> <StatusChip status={e.status} /></li>; })}</ul>
         {d.proposals.length > 0 && <><h3>Open proposals</h3><ul>{d.proposals.map((p) => <li key={p.id}><Link to={`/proposals/${p.id}`}>{CHANGE_LABEL[p.change_type]}</Link> <StatusChip status={p.status} /></li>)}</ul></>}
+        {!!sharedByClassmates?.length && <>
+          <h3>Shared by classmates ({sharedByClassmates.length}) <Help text="Members who deliberately shared their own take on this exact node into a module's Commons. Their full portfolio may still be private — this is only what they chose to share." /></h3>
+          <ul>{sharedByClassmates.map((c, i) => <li key={i}><Link to={`/portfolio/${c.subgraph_id}`}>{c.owner_username}</Link>{c.sub_label && <>: {c.sub_label}</>}</li>)}</ul>
+        </>}
         <div className="muted" style={{ marginTop: 10 }}>ids: <code>{n.slug}</code>{Object.entries(n.external_ids).map(([k, v]) => <span key={k}> · {k}: <code>{String(v)}</code></span>)}</div>
         {editor && n.status !== "canonical" && <div className="row" style={{ marginTop: 12 }}><Tip text="Editors only: mark this node canonical. Needs at least one credible identified review."><button className="btn btn-primary" onClick={() => decide("promote")}>Promote to canonical</button></Tip><button className="btn btn-danger" onClick={() => decide("archive")}>Archive</button></div>}
         {editor && n.status === "canonical" && <div className="row" style={{ marginTop: 12 }}><button className="btn btn-danger" onClick={() => decide("archive")}>Archive</button></div>}

@@ -36,7 +36,9 @@ export default function LeaderboardPage() {
   const pool = useMemo(() => rows.filter((r) => who === "all" ? true : who === "students" ? r.role === "msc_student" : r.role !== "msc_student"), [rows, who]);
   const me = rows.find((r) => r.profile_id === profile?.id);
   const top = (k: Key) => pool.filter((r) => r[k] > 0).sort((a, b) => b[k] - a[k]).slice(0, 5);
-  const rank = (k: Key) => { if (!me || me[k] <= 0) return null; const sorted = pool.filter((r) => r[k] > 0).sort((a, b) => b[k] - a[k]); const i = sorted.findIndex((r) => r.profile_id === me.profile_id); return i < 0 ? null : i + 1; };
+  // Same >=3 threshold as the boards themselves (see the "not shown as a ranked board yet" copy
+  // below) — being "#1" out of one or two isn't a meaningful standing to report back to a student.
+  const rank = (k: Key) => { if (!me || me[k] <= 0) return null; const sorted = pool.filter((r) => r[k] > 0).sort((a, b) => b[k] - a[k]); if (sorted.length < 3) return null; const i = sorted.findIndex((r) => r.profile_id === me.profile_id); return i < 0 ? null : i + 1; };
   const myBest = BOARDS.map((b) => ({ b, rank: rank(b.key), value: me?.[b.key] ?? 0 })).filter((x) => x.rank).sort((a, b) => a.rank! - b.rank!).slice(0, 3);
   return (
     <div className="page page-narrow">
@@ -54,7 +56,9 @@ export default function LeaderboardPage() {
           {BOARDS.filter((b) => b.group === g).map((b) => { const t = top(b.key); const max = t[0]?.[b.key] ?? 1; return (
             <div className="board" key={b.key}>
               <div className="board-head"><b>{b.title}</b><span className="muted">{b.blurb}</span></div>
-              {t.length ? <ol>{t.map((r) => <li key={r.profile_id} className={r.profile_id === profile?.id ? "me" : ""}><span className="who">{r.username}{r.department ? <span className="muted"> · {r.department}</span> : null}<span className="muted"> · {ROLE_LABEL[r.role]}</span></span><span className="bar"><i style={{ width: `${Math.round((r[b.key] / max) * 100)}%` }} /></span><span className="val">{r[b.key]}</span></li>)}</ol> : <div className="muted" style={{ padding: "6px 0" }}>Nobody yet — this one is open.</div>}
+              {t.length >= 3 ? <ol>{t.map((r) => <li key={r.profile_id} className={r.profile_id === profile?.id ? "me" : ""}><span className="who">{r.username}{r.department ? <span className="muted"> · {r.department}</span> : null}<span className="muted"> · {ROLE_LABEL[r.role]}</span></span><span className="bar"><i style={{ width: `${Math.round((r[b.key] / max) * 100)}%` }} /></span><span className="val">{r[b.key]}</span></li>)}</ol>
+                : t.length > 0 ? <div className="muted" style={{ padding: "6px 0" }}>Only {t.length} {t.length === 1 ? "person has" : "people have"} anything here yet — not shown as a ranked board until at least 3 do.</div>
+                : <div className="muted" style={{ padding: "6px 0" }}>Nobody yet — this one is open.</div>}
             </div>); })}
         </div>
       </div>)}

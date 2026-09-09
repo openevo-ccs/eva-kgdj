@@ -61,6 +61,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1
 .chip-revision_requested { color: var(--warn); }
 .chip-approved { color: var(--ok); }
 .chip-flag { color: var(--bad); border-color: #f0b8b8; background: #fdf0f0; }
+.chip-scicomm { color: #8a5a1e; border-color: #e6cfa0; background: #fbf3e3; }
 .rating { font-weight: 600; font-size: 11px; padding: 2px 8px; border-radius: 10px; }
 .rating-strongly_accept { background: #d7f0e2; color: #145c3b; } .rating-accept { background: #ecf8f1; color: var(--ok); }
 .rating-neutral { background: var(--surface-2); color: var(--text-secondary); }

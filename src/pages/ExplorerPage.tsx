@@ -11,7 +11,7 @@ import { EdgeDrawer } from "../components/EdgeDrawer";
 import { Help, Tip } from "../components/Tip";
 import { NodeCards, ViewToggle } from "../components/NodeCards";
 import { useApi, useSession } from "../state/session";
-import type { GraphEdge, GraphNode, Subgraph } from "../lib/types";
+import type { CommonsItem, GraphEdge, GraphNode, Subgraph } from "../lib/types";
 import { COMMUNITY_COLORS, labelPropagation } from "../lib/analytics";
 
 type Analysis = "none" | "degree" | "communities" | "path";
@@ -50,11 +50,29 @@ export default function ExplorerPage() {
   const [busy, setBusy] = useState(false);
   const cyRef = useRef<Core | null>(null);
   const [version, setVersion] = useState(0);
+  const [commons, setCommons] = useState<CommonsItem[]>([]);
+  const viewDefaulted = useRef(false);
 
   const reload = () => api.graph().then((g) => { setNodes(g.nodes); setEdges(g.edges); });
-  const loadMine = async () => { const gs = (await api.subgraphs()).filter((g) => g.owner_id === profile?.id); setMine(gs); if (gs.length && target === "new") setTarget(gs[0].id); const details = await Promise.all(gs.map((g) => api.subgraph(g.id))); const ids = new Set<string>(); details.forEach((d) => d.nodes.forEach((n) => ids.add(n.node_id))); setMyNodeIds(ids); };
+  const loadMine = async () => {
+    const gs = (await api.subgraphs()).filter((g) => g.owner_id === profile?.id); setMine(gs); if (gs.length && target === "new") setTarget(gs[0].id);
+    const details = await Promise.all(gs.map((g) => api.subgraph(g.id))); const ids = new Set<string>(); details.forEach((d) => d.nodes.forEach((n) => ids.add(n.node_id))); setMyNodeIds(ids);
+    // A brand-new student (nothing forked yet) lands on Cards rather than an unfiltered
+    // 300+-node force layout — only ever applied once, on the first resolution, so it never
+    // fights a later manual switch back to graph.
+    if (!viewDefaulted.current) { viewDefaulted.current = true; if (ids.size === 0) setView("cards"); }
+  };
   useEffect(() => { reload(); }, [version]);
   useEffect(() => { loadMine(); }, []);
+  // Loaded once per session (not per node-open): a node's own drawer only ever needs the
+  // slice of this that matches its id, computed client-side in commonsByNode below, so one
+  // shared fetch is enough rather than a fresh Commons round trip on every node click.
+  useEffect(() => { api.commonsItems().then(setCommons); }, []);
+  const commonsByNode = useMemo(() => {
+    const m = new Map<string, CommonsItem[]>();
+    for (const c of commons) { if (c.kind === "node" && c.node_id) { const arr = m.get(c.node_id); if (arr) arr.push(c); else m.set(c.node_id, [c]); } }
+    return m;
+  }, [commons]);
   useEffect(() => { if (departments.length && !depts.size) setDepts(new Set(departments.map((d) => d.id))); }, [departments]);
   const allTypes = useMemo(() => [...new Set(nodes.map((n) => n.type_code))].sort(), [nodes]);
   useEffect(() => { if (allTypes.length && !types.size) setTypes(new Set(allTypes)); }, [allTypes]);
@@ -224,6 +242,7 @@ export default function ExplorerPage() {
               <Tip text="Promoted by an editor after identified review"><span><span className="dept-sw" style={{ background: "#fff", border: "2px solid #1a6b46" }} />canonical</span></Tip>
               <Tip text="Imported seed or submitted proposal; needs identified reviews before an editor promotes it"><span><span className="dept-sw" style={{ background: "#fff", border: "2px dashed #7a4d9c" }} />proposed / pending review</span></Tip>
               <Tip text="Created through an approved member proposal"><span><span className="dept-sw" style={{ background: "#fff", border: "3px double #7a2027" }} />member-authored (approved)</span></Tip>
+              <Tip text="Touches a live science-communication sensitivity — read the description before quoting it publicly"><span><span className="dept-sw" style={{ background: "#fbf3e3", border: "1.5px solid #c9932e" }} />scicomm-sensitive</span></Tip>
               {analysis === "communities" && <span>{commCount} communities</span>}
               <span className="muted">Ctrl+click: multi-select · scroll: zoom · drag: pan</span>
             </div>
@@ -237,7 +256,7 @@ export default function ExplorerPage() {
         </div>
         <div data-tour="drawer" style={{ display: "contents" }}>
           <ResizableDrawer>
-            {nodeId ? <NodeDrawer nodeId={nodeId} nodesById={nodesById} inPortfolio={myNodeIds.has(nodeId)} onClose={() => nav("/explore")} onChanged={() => { setVersion((v) => v + 1); loadMine(); }} />
+            {nodeId ? <NodeDrawer nodeId={nodeId} nodesById={nodesById} inPortfolio={myNodeIds.has(nodeId)} sharedByClassmates={(commonsByNode.get(nodeId) ?? []).filter((c) => c.owner_username !== profile?.username)} onClose={() => nav("/explore")} onChanged={() => { setVersion((v) => v + 1); loadMine(); }} />
               : edgeId ? <EdgeDrawer edgeId={edgeId} onClose={() => nav("/explore")} onChanged={() => setVersion((v) => v + 1)} />
               : <div className="drawer"><h2>Canonical graph explorer</h2>
                   <p className="muted">Click a node for its description, citations, reviews and open proposals; add it to your portfolio; or propose a change. Click an edge to see and review the relationship.</p>
