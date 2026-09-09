@@ -28,7 +28,9 @@ values, nothing else.
 npm install
 npm run mock:build          # once; regenerate after scripts/build_mpi_eva_graph.py changes
 cp .env.example .env        # VITE_KGDJ_MODE=mock for offline UI work
-npm run dev                 # http://localhost:5173/?as=student   (personas: student student2 researcher editor instructor admin)
+npm run dev                 # http://localhost:5173/?as=student   (personas: student=priya[genetics] student2=bram[primatology]
+                             #   student3=linh[linguistics] student4=amara[cross-cultural psych] student5=sofia[child dev]
+                             #   researcher editor instructor admin)
 npm run typecheck && npm run build
 ```
 
@@ -49,9 +51,11 @@ manual `git subtree push` away from this directory, not auto-synced yet.
 ## What the UI does (priority order from the brief)
 
 1. **Auth** — magic-link email (Supabase OTP). Only allowlisted domains/invites get a profile; others see "not a member".
-2. **Canonical graph explorer** — Cytoscape.js with department/status/type filters, search, layouts (`cose`, `dagre`,
-   `concentric`, `grid`), stylesheet: department colours, **dashed** = proposed/pending review, **double border** =
-   student-authored (approved) node, solid green = canonical.
+2. **Canonical graph explorer** — Cytoscape.js with department/status/type filters (with all/none bulk toggles), search,
+   layouts (`cose`, `dagre`, `concentric`, `grid`), stylesheet: department colours, **dashed** = proposed/pending review,
+   **double border** = student-authored (approved) node, solid green = canonical. A **cards view** toggle (also on
+   Portfolio) swaps the canvas for a filterable grid of one collapsible card per node — description/connections/(on
+   Portfolio) your own annotation — for browsing without the physics/zoom overhead of the graph at real scale.
 3. **Node drawer** — description, citations, connections, open proposals, provenance chip; tabs for reviews
    (summary + identified reviews + review form), propose (edit / connection / archival), fork to portfolio. Editors get
    promote/archive buttons.

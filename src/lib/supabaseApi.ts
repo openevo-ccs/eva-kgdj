@@ -57,9 +57,14 @@ export class SupabaseApi implements Api {
   async joinModule(module_id: string, role: "student" | "affiliate") { const id = await this.uid(); must(await this.t("module_members").insert({ module_id, profile_id: id, member_role: role })); }
   async leaveModule(module_id: string) { const id = await this.uid(); must(await this.t("module_members").delete().eq("module_id", module_id).eq("profile_id", id)); }
   async graph() {
-    const nodes = must(await this.t("nodes").select("*").neq("status", "archived")) as GraphNode[];
-    const edges = must(await this.t("edges").select("*").neq("status", "archived")) as GraphEdge[];
-    return { nodes, edges };
+    // nodes and edges don't depend on each other — fetching them in parallel instead of
+    // sequentially halves this call's network latency, which is most of what makes the
+    // canonical graph "feel slow to load" on first navigation to Explorer.
+    const [nodesRes, edgesRes] = await Promise.all([
+      this.t("nodes").select("*").neq("status", "archived"),
+      this.t("edges").select("*").neq("status", "archived"),
+    ]);
+    return { nodes: must(nodesRes) as GraphNode[], edges: must(edgesRes) as GraphEdge[] };
   }
   async node(id: string): Promise<NodeDetail> {
     const node = must(await this.t("nodes").select("*").eq("id", id).single()) as GraphNode;

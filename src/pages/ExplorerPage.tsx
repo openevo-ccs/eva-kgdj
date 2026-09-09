@@ -9,6 +9,7 @@ import { ResizableDrawer } from "../components/ResizableDrawer";
 import { NodeDrawer } from "../components/NodeDrawer";
 import { EdgeDrawer } from "../components/EdgeDrawer";
 import { Help, Tip } from "../components/Tip";
+import { NodeCards, ViewToggle } from "../components/NodeCards";
 import { useApi, useSession } from "../state/session";
 import type { GraphEdge, GraphNode, Subgraph } from "../lib/types";
 import { COMMUNITY_COLORS, labelPropagation } from "../lib/analytics";
@@ -36,6 +37,7 @@ export default function ExplorerPage() {
   const [physics, setPhysics] = useState<PhysicsParams>(prefs.physics);
   const [encoding, setEncoding] = useState<EncodingParams>(prefs.encoding);
   const [autoFit, setAutoFit] = useState(prefs.autoFit);
+  const [view, setView] = useState<"graph" | "cards">("graph");
   const [analysis, setAnalysis] = useState<Analysis>("none");
   const [pathFrom, setPathFrom] = useState<string | null>(null);
   const [path, setPath] = useState<string[] | null>(null);
@@ -50,7 +52,7 @@ export default function ExplorerPage() {
   const [version, setVersion] = useState(0);
 
   const reload = () => api.graph().then((g) => { setNodes(g.nodes); setEdges(g.edges); });
-  const loadMine = async () => { const gs = (await api.subgraphs()).filter((g) => g.owner_id === profile?.id); setMine(gs); if (gs.length && target === "new") setTarget(gs[0].id); const ids = new Set<string>(); for (const g of gs) { const d = await api.subgraph(g.id); d.nodes.forEach((n) => ids.add(n.node_id)); } setMyNodeIds(ids); };
+  const loadMine = async () => { const gs = (await api.subgraphs()).filter((g) => g.owner_id === profile?.id); setMine(gs); if (gs.length && target === "new") setTarget(gs[0].id); const details = await Promise.all(gs.map((g) => api.subgraph(g.id))); const ids = new Set<string>(); details.forEach((d) => d.nodes.forEach((n) => ids.add(n.node_id))); setMyNodeIds(ids); };
   useEffect(() => { reload(); }, [version]);
   useEffect(() => { loadMine(); }, []);
   useEffect(() => { if (departments.length && !depts.size) setDepts(new Set(departments.map((d) => d.id))); }, [departments]);
@@ -142,7 +144,8 @@ export default function ExplorerPage() {
   return (
     <div className="explorer" style={{ flex: 1, minWidth: 0 }}>
       <div className="toolbar">
-        <Tip text="Fit the whole graph in view now (or the selection, if any) — separate from the auto-fit toggle in the sidebar"><button className="btn" onClick={() => fitGraph(cyRef.current)}>Fit now</button></Tip>
+        <ViewToggle view={view} onChange={setView} />
+        {view === "graph" && <Tip text="Fit the whole graph in view now (or the selection, if any) — separate from the auto-fit toggle in the sidebar"><button className="btn" onClick={() => fitGraph(cyRef.current)}>Fit now</button></Tip>}
         <span className="muted">{visible.nodes.length} nodes · {visible.edges.length} edges</span>
       </div>
       {(active.explain || analysis === "path") && <div className="subbar">
@@ -178,7 +181,7 @@ export default function ExplorerPage() {
               </div>
               <div className="sidebar-sep" />
               <div className="sidebar-section">
-                <b>Departments</b>
+                <div className="row" style={{ justifyContent: "space-between" }}><b>Departments</b><span><button className="btn btn-mini" onClick={() => setDepts(new Set(departments.map((d) => d.id)))}>all</button> <button className="btn btn-mini" onClick={() => setDepts(new Set())}>none</button></span></div>
                 <div className="toolbar" style={{ border: 0, padding: 0 }}>
                   {departments.map((d) => <Tip key={d.id} text={`${d.name}: show or hide its nodes`}><label><input type="checkbox" checked={depts.has(d.id)} onChange={() => toggle(depts, d.id, setDepts)} /><span className="dept-sw" style={{ background: d.color_hex || "#999" }} />{d.abbr}</label></Tip>)}
                 </div>
@@ -190,7 +193,7 @@ export default function ExplorerPage() {
                 </div>
               </div>
               <div className="sidebar-section">
-                <b>Types</b>
+                <div className="row" style={{ justifyContent: "space-between" }}><b>Types</b><span><button className="btn btn-mini" onClick={() => setTypes(new Set(allTypes))}>all</button> <button className="btn btn-mini" onClick={() => setTypes(new Set())}>none</button></span></div>
                 <div className="toolbar" style={{ border: 0, padding: 0 }}>
                   {allTypes.map((t) => <Tip key={t} text={`Show or hide nodes of type "${t}"`}><label><input type="checkbox" checked={types.has(t)} onChange={() => toggle(types, t, setTypes)} />{t}</label></Tip>)}
                 </div>
@@ -211,22 +214,26 @@ export default function ExplorerPage() {
           </ResizableDrawer>
         </div>
         <div className="graph-host" data-tour="canvas">
-          <GraphCanvas nodes={visible.nodes} edges={visible.edges} deptById={deptById} layout={layout} physicsParams={physics} selectedId={nodeId ?? null} onSelect={select} selectedEdgeId={edgeId} onSelectEdge={selectEdge} onSelectionChange={setSel}
-            contextMenuExtra={contextMenuExtra} communities={communities} communityColors={COMMUNITY_COLORS} highlightPath={path} encoding={encoding} autoFit={autoFit}
-            onReady={(cy) => { cyRef.current = cy; if (new URLSearchParams(window.location.search).get("debug")) (window as unknown as { __cy?: Core }).__cy = cy; }} />
-          <div className="legend">
-            <Tip text="Promoted by an editor after identified review"><span><span className="dept-sw" style={{ background: "#fff", border: "2px solid #1a6b46" }} />canonical</span></Tip>
-            <Tip text="Imported seed or submitted proposal; needs identified reviews before an editor promotes it"><span><span className="dept-sw" style={{ background: "#fff", border: "2px dashed #7a4d9c" }} />proposed / pending review</span></Tip>
-            <Tip text="Created through an approved member proposal"><span><span className="dept-sw" style={{ background: "#fff", border: "3px double #7a2027" }} />member-authored (approved)</span></Tip>
-            {analysis === "communities" && <span>{commCount} communities</span>}
-            <span className="muted">Ctrl+click: multi-select · scroll: zoom · drag: pan</span>
-          </div>
-          {analysis === "degree" && degreeTop.length > 0 && (
-            <div className="legend" style={{ left: "auto", right: 10, bottom: 10, flexDirection: "column", alignItems: "stretch", gap: 2 }}>
-              <b style={{ fontSize: 11 }}>Most connected (top 12) <Help text="Normalised degree centrality among the visible nodes: 1.0 would mean connected to every other visible node." /></b>
-              {degreeTop.map((r) => <span key={r.id} style={{ cursor: "pointer" }} onClick={() => nav(`/explore/${r.id}`)}>{r.d.toFixed(3)} · {r.label}</span>)}
+          {view === "cards" ? (
+            <NodeCards nodes={visible.nodes} edges={visible.edges} deptById={deptById} onOpen={(id) => nav(`/explore/${id}`)} inPortfolioIds={myNodeIds} />
+          ) : <>
+            <GraphCanvas nodes={visible.nodes} edges={visible.edges} deptById={deptById} layout={layout} physicsParams={physics} selectedId={nodeId ?? null} onSelect={select} selectedEdgeId={edgeId} onSelectEdge={selectEdge} onSelectionChange={setSel}
+              contextMenuExtra={contextMenuExtra} communities={communities} communityColors={COMMUNITY_COLORS} highlightPath={path} encoding={encoding} autoFit={autoFit}
+              onReady={(cy) => { cyRef.current = cy; if (new URLSearchParams(window.location.search).get("debug")) (window as unknown as { __cy?: Core }).__cy = cy; }} />
+            <div className="legend">
+              <Tip text="Promoted by an editor after identified review"><span><span className="dept-sw" style={{ background: "#fff", border: "2px solid #1a6b46" }} />canonical</span></Tip>
+              <Tip text="Imported seed or submitted proposal; needs identified reviews before an editor promotes it"><span><span className="dept-sw" style={{ background: "#fff", border: "2px dashed #7a4d9c" }} />proposed / pending review</span></Tip>
+              <Tip text="Created through an approved member proposal"><span><span className="dept-sw" style={{ background: "#fff", border: "3px double #7a2027" }} />member-authored (approved)</span></Tip>
+              {analysis === "communities" && <span>{commCount} communities</span>}
+              <span className="muted">Ctrl+click: multi-select · scroll: zoom · drag: pan</span>
             </div>
-          )}
+            {analysis === "degree" && degreeTop.length > 0 && (
+              <div className="legend" style={{ left: "auto", right: 10, bottom: 10, flexDirection: "column", alignItems: "stretch", gap: 2 }}>
+                <b style={{ fontSize: 11 }}>Most connected (top 12) <Help text="Normalised degree centrality among the visible nodes: 1.0 would mean connected to every other visible node." /></b>
+                {degreeTop.map((r) => <span key={r.id} style={{ cursor: "pointer" }} onClick={() => nav(`/explore/${r.id}`)}>{r.d.toFixed(3)} · {r.label}</span>)}
+              </div>
+            )}
+          </>}
         </div>
         <div data-tour="drawer" style={{ display: "contents" }}>
           <ResizableDrawer>

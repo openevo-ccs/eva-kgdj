@@ -11,21 +11,21 @@ import type {
 } from "./types";
 
 type Raw = { departments: Department[]; nodes: GraphNode[]; edges: GraphEdge[] };
+// Five students with deliberately different disciplinary portfolios (genetics, primatology,
+// linguistics, child development, cross-cultural psychology) — all loggable via ?as=, so the
+// UI can actually be reviewed from each of their points of view, not just read as data.
 const PERSONAS: Record<string, Profile> = {
-  student: { id: "u-student", username: "alice", full_name: null, role: "msc_student", institution: "uni-leipzig", department_id: null, is_active: true, research_group_id: null, affiliation_note: null },
-  student2: { id: "u-student2", username: "bob", full_name: null, role: "msc_student", institution: "uni-leipzig", department_id: null, is_active: true, research_group_id: null, affiliation_note: null },
+  student: { id: "u-student", username: "priya", full_name: "Priya Raghavan", role: "msc_student", institution: "uni-leipzig", department_id: null, is_active: true, research_group_id: "rg-evogen", affiliation_note: "Co-supervised with Archaeogenetics for ancient-DNA method training." },
+  student2: { id: "u-student2", username: "bram", full_name: "Bram de Wilde", role: "msc_student", institution: "uni-leipzig", department_id: null, is_active: true, research_group_id: "rg-primevo", affiliation_note: "Remote data access to the Amboseli long-term baboon project." },
+  student3: { id: "u-student3", username: "linh", full_name: "Linh Tran", role: "msc_student", institution: "uni-leipzig", department_id: null, is_active: true, research_group_id: "rg-dlce", affiliation_note: null },
+  student4: { id: "u-student4", username: "amara", full_name: "Amara Okafor", role: "msc_student", institution: "uni-leipzig", department_id: null, is_active: true, research_group_id: "rg-ccp", affiliation_note: "Also auditing HBEC's cross-cultural database methods sessions." },
+  student5: { id: "u-student5", username: "sofia", full_name: "Sofia Marchetti", role: "msc_student", institution: "uni-leipzig", department_id: null, is_active: true, research_group_id: "rg-cccd", affiliation_note: "Fieldwork placement with the Culture, Cooperation and Child Development group." },
   researcher: { id: "u-researcher", username: "carla", full_name: null, role: "researcher", institution: "mpi-eva", department_id: "dept-ccp", is_active: true, research_group_id: null, affiliation_note: null },
   editor: { id: "u-editor", username: "eve", full_name: null, role: "editor", institution: "mpi-eva", department_id: "dept-ccp", is_active: true, research_group_id: null, affiliation_note: null },
   instructor: { id: "u-instructor", username: "daniel", full_name: null, role: "researcher", institution: "mpi-eva", department_id: "dept-ccp", is_active: true, research_group_id: null, affiliation_note: null },
   admin: { id: "u-admin", username: "dustin", full_name: null, role: "admin", institution: "mpi-eva", department_id: "dept-ccp", is_active: true, research_group_id: null, affiliation_note: null },
 };
-// Two extra classmates that exist only as data (no login persona): they make the
-// cohort statistics and the leaderboard non-trivial in mock mode.
-const PEERS: Profile[] = [
-  { id: "u-peer1", username: "chen", full_name: null, role: "msc_student", institution: "uni-leipzig", department_id: null, is_active: true, research_group_id: null, affiliation_note: null },
-  { id: "u-peer2", username: "dana", full_name: null, role: "msc_student", institution: "uni-leipzig", department_id: null, is_active: true, research_group_id: null, affiliation_note: null },
-];
-const EVERYONE = [...Object.values(PERSONAS), ...PEERS];
+const EVERYONE = Object.values(PERSONAS);
 const MODULE: Module = { id: "mod-ccp", code: "ccp-wise-2026-27", name: "Comparative Cultural Psychology", cohort_year: 2026, term: "WiSe", instructor_id: "u-instructor" };
 const GROUPS: ResearchGroup[] = [
   { id: "rg-ccp", pure_ou_id: "ou_3040267", name: "Department of Comparative Cultural Psychology", kind: "department", department_code: "ccp", status: "OPENED", parent_name: null },
@@ -55,6 +55,9 @@ export class MockApi implements Api {
   private citations: Citation[] = [
     { id: "c-1", doi: "10.1017/s0140525x05000129", openalex_id: "W2106980598", title: "Understanding and sharing intentions: The origins of cultural cognition", authors: ["Tomasello, M.", "Carpenter, M.", "Call, J.", "Behne, T.", "Moll, H."], year: 2005, venue: "Behavioral and Brain Sciences", verification: { crossref: { verdict: "ok" }, pure: { item_id: "item_58292" } } },
     { id: "c-2", doi: "10.1038/21415", openalex_id: "W2028434776", title: "Cultures in chimpanzees", authors: ["Whiten, A.", "Goodall, J.", "McGrew, W. C.", "Boesch, C."], year: 1999, venue: "Nature", verification: { crossref: { verdict: "ok" } } },
+    { id: "c-3", doi: "10.1038/s41586-020-2818-3", title: "The major genetic risk factor for severe COVID-19 is inherited from Neanderthals", authors: ["Zeberg, H.", "Pääbo, S."], year: 2020, venue: "Nature", verification: { crossref: { verdict: "ok" } } },
+    { id: "c-4", doi: "10.1017/s0140525x0999152x", title: "The weirdest people in the world?", authors: ["Henrich, J.", "Heine, S. J.", "Norenzayan, A."], year: 2010, venue: "Behavioral and Brain Sciences", verification: { crossref: { verdict: "ok" } } },
+    { id: "c-6", doi: "10.1073/pnas.0610848104", title: "Linguistic tone is related to the population frequency of the adaptive haplogroups of two brain size genes, ASPM and Microcephalin", authors: ["Dediu, D.", "Ladd, D. R."], year: 2007, venue: "PNAS", verification: { crossref: { verdict: "ok" } } },
   ];
   private propList: Proposal[] = [];
   private proposalCitations: Record<string, string[]> = {};
@@ -69,11 +72,11 @@ export class MockApi implements Api {
   private shares: { subgraph_id: string; profile_id: string }[] = [];
   private members: { module_id: string; profile_id: string; role: ModuleMemberRole }[] = [
     { module_id: MODULE.id, profile_id: "u-student", role: "student" }, { module_id: MODULE.id, profile_id: "u-student2", role: "student" },
-    { module_id: MODULE.id, profile_id: "u-peer1", role: "student" }, { module_id: MODULE.id, profile_id: "u-peer2", role: "student" },
-    { module_id: MODULE.id, profile_id: "u-instructor", role: "instructor" },
+    { module_id: MODULE.id, profile_id: "u-student3", role: "student" }, { module_id: MODULE.id, profile_id: "u-student4", role: "student" },
+    { module_id: MODULE.id, profile_id: "u-student5", role: "student" }, { module_id: MODULE.id, profile_id: "u-instructor", role: "instructor" },
   ];
   private consent: Record<ConsentPurpose, boolean> = { portfolio_processing: true, peer_review_visibility: true, leaderboard_display: false, canonical_attribution: false };
-  private peerConsent = new Set(["u-student2", "u-researcher", "u-peer1", "u-peer2"]);
+  private peerConsent = new Set(["u-student2", "u-student3", "u-student4", "u-student5", "u-researcher"]);
 
   constructor() {
     const as = new URLSearchParams(window.location.search).get("as") || "student";
@@ -90,50 +93,229 @@ export class MockApi implements Api {
   private seedDemo() {
     const r = this.raw!;
     const bySlug = (s: string) => r.nodes.find((n) => n.slug === s) || r.nodes[0];
+    const day = (offset: number) => new Date(Date.now() - offset * 86400000).toISOString();
+
+    // The imported mpi-eva-graph seed ships with every node status "proposed" (dashed) — accurate
+    // to a fresh import, but it means a first-time student sees a canonical graph that is 100%
+    // "pending review", which reads as broken/empty rather than as an established knowledge base.
+    // Simulate a term's worth of prior curation: foundational vocabulary (theory/domain nodes) is
+    // already peer-reviewed and canonical; frontier topics, methods, field sites and scicomm framings
+    // stay proposed, which is also what gives the five portfolios below live material to review.
+    const CANON_EXTRA = new Set(["primevo-topic-chimpanzee-cultural-diversity", "hbec-topic-cooperation"]);
+    const priorTerm = day(70);
+    for (const n of r.nodes) {
+      if (n.type_code === "theory" || n.type_code === "domain" || CANON_EXTRA.has(n.slug)) {
+        n.status = "canonical"; n.canonical_since = n.canonical_since || priorTerm;
+        n.provenance = { ...n.provenance, status: "canonical", approved_by: "u-editor", approved_at: priorTerm, assigned_by: "editorial-review" };
+      }
+    }
+
     const tom = bySlug("ccp-theory-theory-of-mind");
     const pid = "p-demo-1";
     this.propList.push({ id: pid, proposer_id: "u-student2", change_type: "edit_node", target_node_id: tom.id, target_edge_id: null,
       payload: { description: tom.description + " Revised gloss, checked against Tomasello et al. (2005)." }, rationale: "The seed gloss is a single-pass draft; this revision cites the foundational shared-intentionality paper and tightens the definition.",
-      module_id: MODULE.id, status: "under_review", submitter_anonymous: false, submitted_at: now(), updated_at: now(), decided_at: null, result_node_id: null, result_edge_id: null });
+      module_id: MODULE.id, status: "under_review", submitter_anonymous: false, submitted_at: day(6), updated_at: day(6), decided_at: null, result_node_id: null, result_edge_id: null });
     this.proposalCitations[pid] = ["c-1"];
-    this.reviews.push({ id: "r-demo-1", target_kind: "proposal", proposal_id: pid, node_id: null, edge_id: null, subgraph_id: null, reviewer_id: "u-researcher", reviewer_username: "carla", reviewer_active: true, rating: "accept", commentary_md: "Clear and well sourced. Consider also citing **Rakoczy (2022)** for the developmental timeline.", week: null, created_at: now() });
-    this.helpful.push({ review_id: "r-demo-1", voter_id: "u-student2" }, { review_id: "r-demo-1", voter_id: "u-peer1" });
-    const pg = bySlug("dag-theory-population-genetics");
-    this.reviews.push({ id: "r-demo-2", target_kind: "node", proposal_id: null, node_id: pg.id, edge_id: null, subgraph_id: null, reviewer_id: "u-researcher", reviewer_username: "carla", reviewer_active: true, rating: "strongly_accept", commentary_md: "Accurate gloss; Hartl & Clark would be the defining citation.", week: null, created_at: now() });
-    // an approved + a rejected demo proposal by chen, reviewed by dana (so "reviews upheld" is non-zero)
+    this.reviews.push({ id: "r-demo-1", target_kind: "proposal", proposal_id: pid, node_id: null, edge_id: null, subgraph_id: null, reviewer_id: "u-researcher", reviewer_username: "carla", reviewer_active: true, rating: "accept", commentary_md: "Clear and well sourced. Consider also citing **Rakoczy (2022)** for the developmental timeline.", week: null, created_at: day(5) });
+    this.helpful.push({ review_id: "r-demo-1", voter_id: "u-student2" }, { review_id: "r-demo-1", voter_id: "u-student3" });
+
+    // approved + rejected demo proposals, deliberately assigned across students rather than to the
+    // topic-matching specialist: Sofia (child development) editing a theory-of-mind edge and Priya
+    // (genetics, anonymous — she isn't sure of her footing outside her own field) proposing a cleanup
+    // that Bram, who actually knows the primatology literature, correctly catches as wrong.
     const p2 = "p-demo-2", p3 = "p-demo-3";
-    this.propList.push({ id: p2, proposer_id: "u-peer1", change_type: "add_edge", target_node_id: null, target_edge_id: null, payload: { source_node_id: bySlug("ccp-theory-social-cognition").id, target_node_id: tom.id, relationship_code: "grounds" }, rationale: "Social cognition frames the theory-of-mind work; Tomasello 2005 makes the link explicit.", module_id: MODULE.id, status: "approved", submitter_anonymous: false, submitted_at: now(), updated_at: now(), decided_at: now(), result_node_id: null, result_edge_id: null });
-    this.propList.push({ id: p3, proposer_id: "u-peer1", change_type: "archive_node", target_node_id: bySlug("hbec-topic-cooperation").id, target_edge_id: null, payload: {}, rationale: "Duplicate of the cross-department cooperation node; archive this one.", module_id: MODULE.id, status: "rejected", submitter_anonymous: true, submitted_at: now(), updated_at: now(), decided_at: now(), result_node_id: null, result_edge_id: null });
+    this.propList.push({ id: p2, proposer_id: "u-student5", change_type: "add_edge", target_node_id: null, target_edge_id: null, payload: { source_node_id: bySlug("ccp-theory-social-cognition").id, target_node_id: tom.id, relationship_code: "grounds" }, rationale: "Social cognition frames the theory-of-mind work; Tomasello 2005 makes the link explicit.", module_id: MODULE.id, status: "approved", submitter_anonymous: false, submitted_at: day(20), updated_at: day(18), decided_at: day(18), result_node_id: null, result_edge_id: null });
+    this.propList.push({ id: p3, proposer_id: "u-student", change_type: "archive_node", target_node_id: bySlug("hbec-topic-cooperation").id, target_edge_id: null, payload: {}, rationale: "Duplicate of the cross-department cooperation node; archive this one.", module_id: MODULE.id, status: "rejected", submitter_anonymous: true, submitted_at: day(15), updated_at: day(13), decided_at: day(13), result_node_id: null, result_edge_id: null });
     this.proposalCitations[p2] = ["c-1"]; this.proposalCitations[p3] = [];
-    this.reviews.push({ id: "r-demo-3", target_kind: "proposal", proposal_id: p2, node_id: null, edge_id: null, subgraph_id: null, reviewer_id: "u-peer2", reviewer_username: "dana", reviewer_active: true, rating: "accept", commentary_md: "The direction of the edge is right; label it 'frames'.", week: null, created_at: now() });
-    this.reviews.push({ id: "r-demo-4", target_kind: "proposal", proposal_id: p3, node_id: null, edge_id: null, subgraph_id: null, reviewer_id: "u-peer2", reviewer_username: "dana", reviewer_active: true, rating: "reject", commentary_md: "Not a duplicate: the HBEC node is about field measures of cooperation, the cross-department one about the concept. Keep both, add an edge.", week: null, created_at: now() });
-    // peer portfolios (private; count for cohort statistics and the leaderboard only)
-    const day = (offset: number) => new Date(Date.now() - offset * 86400000).toISOString();
-    const mk = (owner: string, title: string, slugs: string[], own: [PrivateNodeType, string][], links: [number, number, string, string | null, number][], ann: string[], sharedIdx: { node?: number; own?: number; link?: number } = {}) => {
-      const g: Subgraph = { id: nid("g"), owner_id: owner, module_id: MODULE.id, title, description: "", visibility: "private", last_checkpoint_week: null, created_at: now() };
+    this.reviews.push({ id: "r-demo-3", target_kind: "proposal", proposal_id: p2, node_id: null, edge_id: null, subgraph_id: null, reviewer_id: "u-student4", reviewer_username: "amara", reviewer_active: true, rating: "accept", commentary_md: "The direction of the edge is right; label it 'frames'.", week: null, created_at: day(19) });
+    this.reviews.push({ id: "r-demo-4", target_kind: "proposal", proposal_id: p3, node_id: null, edge_id: null, subgraph_id: null, reviewer_id: "u-student2", reviewer_username: "bram", reviewer_active: true, rating: "reject", commentary_md: "Not a duplicate: the HBEC node is about field measures of cooperation, the cross-department one about the concept. Keep both, add an edge.", week: null, created_at: day(14) });
+
+    // three more open proposals spanning "no reviews yet", "reviewers disagree", and "one strong accept"
+    const p6 = "p-demo-6";
+    const covid = bySlug("evogen-topic-covid19-neanderthal-haplotypes");
+    this.propList.push({ id: p6, proposer_id: "u-student", change_type: "edit_node", target_node_id: covid.id, target_edge_id: null,
+      payload: { description: covid.description + " Note the OAS1-locus mechanism and that the risk haplotype's frequency varies substantially by population — both matter for how this gets discussed publicly." },
+      rationale: "The current gloss states the association but not the mechanism, and public 'Neanderthal gene' framing tends to skip the population-frequency caveat entirely (Zeberg & Pääbo 2020).",
+      module_id: MODULE.id, status: "pending", submitter_anonymous: false, submitted_at: day(1), updated_at: day(1), decided_at: null, result_node_id: null, result_edge_id: null });
+    this.proposalCitations[p6] = ["c-3"];
+
+    const p7 = "p-demo-7";
+    this.propList.push({ id: p7, proposer_id: "u-student3", change_type: "add_edge", target_node_id: null, target_edge_id: null,
+      payload: { source_node_id: bySlug("dlce-topic-gene-language-correlation").id, target_node_id: bySlug("evogen-topic-introgression-from-archaic-hominins").id, relationship_code: "informed_by" },
+      rationale: "Priya's genomics portfolio raises whether introgressed regulatory variants could sit near language-relevant regions. Dediu & Ladd (2007) is the classic precedent for a genetic–linguistic correlational claim, so I want the canonical graph to at least carry the connection as a hypothesis, clearly hedged.",
+      module_id: MODULE.id, status: "under_review", submitter_anonymous: false, submitted_at: day(9), updated_at: day(3), decided_at: null, result_node_id: null, result_edge_id: null });
+    this.proposalCitations[p7] = ["c-6"];
+    this.reviews.push({ id: "r-demo-6", target_kind: "proposal", proposal_id: p7, node_id: null, edge_id: null, subgraph_id: null, reviewer_id: "u-researcher", reviewer_username: "carla", reviewer_active: true, rating: "accept", commentary_md: "The Dediu & Ladd precedent is real and 'informed_by' is an appropriately cautious label — this is a hypothesis edge, not a settled mechanism.", week: null, created_at: day(6) });
+    this.reviews.push({ id: "r-demo-7", target_kind: "proposal", proposal_id: p7, node_id: null, edge_id: null, subgraph_id: null, reviewer_id: "u-instructor", reviewer_username: "daniel", reviewer_active: true, rating: "reject", commentary_md: "This correlational literature (Dediu & Ladd 2007 and the debate that followed it) has a contested replication history. Before this becomes a canonical edge I'd want the proposal to name that contestation explicitly, not just cite the original finding — otherwise we're presenting a disputed correlation as settled input to language-evolution theory.", week: null, created_at: day(3) });
+
+    const p8 = "p-demo-8";
+    this.propList.push({ id: p8, proposer_id: "u-student4", change_type: "edit_node", target_node_id: bySlug("hbec-topic-cross-cultural-generalizability").id, target_edge_id: null,
+      payload: { description: bySlug("hbec-topic-cross-cultural-generalizability").description + " A finding cannot be judged culture-general or culture-specific without first establishing measurement invariance across the samples compared (Henrich, Heine & Norenzayan 2010)." },
+      rationale: "This node badly needed the WEIRD citation — it names the problem without naming the discipline-defining paper that raised it.",
+      module_id: MODULE.id, status: "under_review", submitter_anonymous: false, submitted_at: day(7), updated_at: day(4), decided_at: null, result_node_id: null, result_edge_id: null });
+    this.proposalCitations[p8] = ["c-4"];
+    this.reviews.push({ id: "r-demo-8", target_kind: "proposal", proposal_id: p8, node_id: null, edge_id: null, subgraph_id: null, reviewer_id: "u-researcher", reviewer_username: "carla", reviewer_active: true, rating: "strongly_accept", commentary_md: "Overdue. This is the single most-cited critique in the area and the gloss read strangely without it.", week: null, created_at: day(4) });
+
+    // a full loop closed end to end: proposal -> review -> editorial decision -> canonical edit,
+    // so at least one of the five students' proposals shows the whole workflow resolved, not just open
+    const p9 = "p-demo-9", play = bySlug("hbec-topic-childrens-play");
+    const revisedPlay = play.description + " Cross-species comparison (Bram, primatology review) suggests rule-following precursors also appear in great-ape play, so the human-specific claim here is about degree and content, not the mere presence of rule-governed play.";
+    this.propList.push({ id: p9, proposer_id: "u-student5", change_type: "edit_node", target_node_id: play.id, target_edge_id: null,
+      payload: { description: revisedPlay }, rationale: "Play is where a lot of early cooperative and rule-following behaviour actually happens, informally, before anyone calls it 'teaching' — the gloss should say so and flag the comparative angle a classmate raised.",
+      module_id: MODULE.id, status: "approved", submitter_anonymous: false, submitted_at: day(11), updated_at: day(2), decided_at: day(2), result_node_id: play.id, result_edge_id: null });
+    this.proposalCitations[p9] = ["c-1"];
+    this.reviews.push({ id: "r-demo-9", target_kind: "proposal", proposal_id: p9, node_id: null, edge_id: null, subgraph_id: null, reviewer_id: "u-student2", reviewer_username: "bram", reviewer_active: true, rating: "accept", commentary_md: "As a primatologist I'd flag that some rule-following precursors in play show up in great apes too — your gloss is specifically about human variation, so that's fine as long as the human-specific claim stays about degree, not presence. Accept.", week: null, created_at: day(4) });
+    this.decisions.push({ id: "ed-demo-1", proposal_id: p9, node_id: null, edge_id: null, editor_id: "u-editor", decision: "approve", feedback: "Good tightening — and it's nice that a classmate's cross-species review is what pushed this past 'looks fine to me' into something actually checked against the comparative literature. Approved.", decided_at: day(2) });
+    play.description = revisedPlay; play.status = "canonical"; play.version += 1; play.canonical_since = day(2);
+    play.provenance = { ...play.provenance, status: "canonical", proposal_id: p9, proposer_id: "u-student5", approved_by: "u-editor", approved_at: day(2), assigned_by: "editorial-review" };
+
+    // identified node-level reviews on still-"proposed" (dashed) topic nodes each student engaged
+    // with directly — this is exactly what the Editorial dashboard's "seed nodes ready to promote"
+    // table is for, and it's populated with reviewers who actually have a stake in the topic.
+    this.reviews.push({ id: "r-demo-10", target_kind: "node", proposal_id: null, node_id: bySlug("primevo-topic-social-play-and-cooperation").id, edge_id: null, subgraph_id: null, reviewer_id: "u-student2", reviewer_username: "bram", reviewer_active: true, rating: "strongly_accept", commentary_md: "Matches my own field questions about play as cooperation scaffolding directly; gloss is accurate and well scoped.", week: null, created_at: day(10) });
+    this.reviews.push({ id: "r-demo-11", target_kind: "node", proposal_id: null, node_id: bySlug("ccp-topic-cross-cultural-norm-enforcement").id, edge_id: null, subgraph_id: null, reviewer_id: "u-student4", reviewer_username: "amara", reviewer_active: true, rating: "accept", commentary_md: "Precisely the topic anchoring my own question, though 'enforcement' should distinguish caregiver-mediated from peer-mediated cases eventually.", week: null, created_at: day(9) });
+    this.reviews.push({ id: "r-demo-12", target_kind: "node", proposal_id: null, node_id: bySlug("evogen-topic-pain-sensitivity-introgression").id, edge_id: null, subgraph_id: null, reviewer_id: "u-student", reviewer_username: "priya", reviewer_active: true, rating: "accept", commentary_md: "Solid summary of the introgression case; I'd add a caveat that functional validation (CRISPR allele-reversion) is still limited to a handful of variants, not a general result.", week: null, created_at: day(8) });
+    this.reviews.push({ id: "r-demo-13", target_kind: "node", proposal_id: null, node_id: bySlug("dlce-topic-coevolution-of-language-and-culture").id, edge_id: null, subgraph_id: null, reviewer_id: "u-student3", reviewer_username: "linh", reviewer_active: true, rating: "accept", commentary_md: "Good general statement, though it reads as a claim about correlated structure — worth being explicit that correlation is all the current cross-linguistic evidence actually supports.", week: null, created_at: day(7) });
+
+    // ---- five portfolios: genetics, primatology, linguistics, cross-cultural psychology, child development ----
+    const mk = (owner: string, title: string, slugs: string[], own: [PrivateNodeType, string][], links: [number, number, string, string | null][], ann: string[], sharedIdx: { node?: number[]; own?: number[]; link?: number[] } = {}) => {
+      const g: Subgraph = { id: nid("g"), owner_id: owner, module_id: MODULE.id, title, description: "", visibility: "private", last_checkpoint_week: null, created_at: day(45) };
       this.sgList.push(g);
       const ids: string[] = [];
-      slugs.forEach((s, i) => { const n = bySlug(s); ids.push(n.id); const at = day(12 - i * 3); this.sgNodes.push({ subgraph_id: g.id, node_id: n.id, custom_annotation: ann[i] || "", pos_x: null, pos_y: null, added_week: null, added_at: at, updated_at: at, shared: sharedIdx.node === i, shared_at: sharedIdx.node === i ? at : null }); });
-      own.forEach(([t, l], i) => { const at = day(10 - i * 2); const p: PrivateNode = { id: nid("pn"), subgraph_id: g.id, node_type: t, label: l, source: null, origin: null, created_week: null, pos_x: null, pos_y: null, created_at: at, updated_at: at, shared: sharedIdx.own === i, shared_at: sharedIdx.own === i ? at : null }; this.privNodes.push(p); ids.push(p.id); });
-      links.forEach(([a, b, why, lens], i) => { const fa = a >= slugs.length, fb = b >= slugs.length; const at = day(8 - i); this.links.push({ id: nid("l"), subgraph_id: g.id, from_node_id: fa ? null : ids[a], from_private_id: fa ? ids[a] : null, to_node_id: fb ? null : ids[b], to_private_id: fb ? ids[b] : null, why, lens, created_week: null, edge_id: null, created_at: at, updated_at: at, shared: sharedIdx.link === i, shared_at: sharedIdx.link === i ? at : null }); });
+      const sharedNode = new Set(sharedIdx.node || []), sharedOwn = new Set(sharedIdx.own || []), sharedLink = new Set(sharedIdx.link || []);
+      slugs.forEach((s, i) => { const n = bySlug(s); ids.push(n.id); const at = day(40 - i * 4); this.sgNodes.push({ subgraph_id: g.id, node_id: n.id, custom_annotation: ann[i] || "", pos_x: null, pos_y: null, added_week: null, added_at: at, updated_at: at, shared: sharedNode.has(i), shared_at: sharedNode.has(i) ? at : null }); });
+      own.forEach(([t, l], i) => { const at = day(34 - i * 6); const p: PrivateNode = { id: nid("pn"), subgraph_id: g.id, node_type: t, label: l, source: null, origin: null, created_week: null, pos_x: null, pos_y: null, created_at: at, updated_at: at, shared: sharedOwn.has(i), shared_at: sharedOwn.has(i) ? at : null }; this.privNodes.push(p); ids.push(p.id); });
+      links.forEach(([a, b, why, lens], i) => { const fa = a >= slugs.length, fb = b >= slugs.length; const at = day(30 - i * 3); this.links.push({ id: nid("l"), subgraph_id: g.id, from_node_id: fa ? null : ids[a], from_private_id: fa ? ids[a] : null, to_node_id: fb ? null : ids[b], to_private_id: fb ? ids[b] : null, why, lens, created_week: null, edge_id: null, created_at: at, updated_at: at, shared: sharedLink.has(i), shared_at: sharedLink.has(i) ? at : null }); });
       return g;
     };
-    mk("u-student2", "Bob: apes, teaching, culture", ["ccp-theory-theory-of-mind", "primevo-topic-chimpanzee-cultural-diversity", "hbec-topic-cooperation", "ccp-method-eye-tracking"],
-      [["self", "me"], ["question", "Do apes teach on purpose?"], ["resource", "Whiten 1999 Nature"]],
-      [[4, 0, "I keep coming back to whether reading minds is needed for teaching, which is the hinge of my question.", "mechanism", 1], [5, 1, "My question is really a question about chimpanzee cultural transmission.", "theory", 2], [1, 2, "Cooperation field data from HBEC would let me test whether teaching co-varies with cooperation norms.", "evidence", 3], [6, 1, "The Whiten paper is the classic cultures-in-chimpanzees evidence base.", "evidence", 2]],
-      ["Core mechanism, but I doubt apes need full ToM for teaching.", "Cultural variants across communities: my empirical anchor.", "", "Could use gaze-following as a proxy for attention to demonstrators."],
-      { own: 1 });
-    mk("u-peer1", "Chen: language and cognition", ["dlce-theory-language-evolution", "ccp-theory-social-cognition", "ccp-theory-theory-of-mind", "dag-theory-population-genetics", "humor-domain-stone-tools", "hbec-theory-cultural-evolution"],
-      [["self", "me"], ["question", "Did language need theory of mind, or the reverse?"], ["theory", "Ostensive communication (Sperber & Wilson)"], ["method", "Cross-linguistic phylogenetics"]],
-      [[6, 1, "The ostensive-inferential model says communication presupposes intention-reading, which is what social cognition studies.", "theory", 1], [7, 0, "Relevance theory is the bridge between the pragmatic and the cognitive accounts here.", "theory", 2], [0, 5, "Language change is a case of cultural evolution; the HBEC models should apply to phonology.", "mechanism", 2], [3, 0, "Population genetics gives the formal tools that language phylogenetics borrowed.", "method", 3], [4, 0, "Tool traditions are the earliest evidence of cumulative culture, and cumulative culture is where language might have paid off.", "evidence", 4], [9, 0, "My method node is how I would test any of this.", "method", 4]],
-      ["My home base: whether language is a product or a driver of social cognition.", "Mind-reading as the substrate of communication.", "The developmental data that anchors the cognitive side.", "Formal models I need to learn to read the phylogenetic work.", "Deep-time evidence; I want to know what tools say about teaching.", "Framework for treating language change as an evolutionary process."],
-      { link: 0 });
-    mk("u-peer2", "Dana: cooperation across departments", ["hbec-topic-cooperation", "ccp-theory-social-cognition", "primevo-topic-chimpanzee-cultural-diversity"],
-      [["self", "me"], ["question", "Is human cooperation unique in kind or only degree?"]],
-      [[4, 0, "This is the question the module opened with and I want to keep it in view.", "theory", 1], [0, 2, "Chimpanzee community-level traditions are the comparison case for norms.", "evidence", 2]],
-      ["Field measures of cooperation; I am interested in how they are constructed.", "", "The comparison species case."],
-      { own: 1 });
-    this.reviews.push({ id: "r-demo-5", target_kind: "subgraph", proposal_id: null, node_id: null, edge_id: null, subgraph_id: this.sgList[1].id, reviewer_id: "u-peer2", reviewer_username: "dana", reviewer_active: true, rating: "accept", commentary_md: "Your theory chain is strong; the evidence side is thin — add one empirical node per theory.", week: 3, created_at: now() });
+
+    // Priya — evolutionary/archaeogenetics: archaic introgression and its behavioural/ethical edges
+    mk("u-student", "Priya: what introgressed DNA actually did",
+      ["evogen-topic-introgression-from-archaic-hominins", "evogen-topic-covid19-neanderthal-haplotypes", "evogen-topic-pain-sensitivity-introgression", "dag-topic-neanderthal-admixture", "dag-method-shotgun-sequencing", "evogen-method-selection-scans", "evogen-theory-coalescent-theory", "dag-scicomm-race-and-ancestry-framing", "dlce-topic-gene-language-correlation", "hbec-theory-gene-culture-coevolution"],
+      [["self", "me"], ["question", "If a Neanderthal-introgressed haplotype changes pain sensitivity, does it also shape behaviour — or am I pattern-matching a good story onto a noisy GWAS hit?"], ["resource", "Zeberg & Pääbo (2020) — Neanderthal haplotype and severe COVID-19 risk"], ["method", "Selection scans (iHS / XP-EHH) — I can cite a 'signal of selection', I can't run one yet"]],
+      [[2, 11, "This is the concrete case my question is actually about — a haplotype with a specific, testable phenotype, not just a frequency difference.", "mechanism"],
+       [1, 5, "If the COVID-risk haplotype really was under recent selection in some populations, a selection scan is the actual test — not just noting that it's introgressed.", "method"],
+       [3, 6, "Every admixture-timing estimate for this pulse is a coalescent-model output; the topic node states a date without showing the machinery producing it.", "theory"],
+       [6, 4, "Coalescent models are only as good as the genotype calls under them, and low-coverage ancient shotgun data has real error modes that propagate downstream.", "method"],
+       [0, 8, "If any introgressed regulatory variants sit near language-relevant regions, that's a genetic channel into language evolution — Linh's linguistics portfolio has the other half of this question.", "theory"],
+       [0, 9, "Archaic introgression is a case where a genetic input clearly precedes a behavioural outcome, which is the whole claim gene-culture coevolution needs to make precise.", "theory"],
+       [7, 11, "Popular 'percent Neanderthal' framing is exactly the ancestry essentialism this node warns about — I need to phrase my own question so it can't be misread as biological race science.", "ethics"]],
+      ["The introgression literature is where 'ancient DNA' stops being about ancestry maps and starts being about function — which variants actually did something once they were in modern humans.",
+       "The clearest case I have of an introgressed haplotype with a plausible, testable phenotype — and one everyone already has an opinion about, which is a good test of my own reasoning.",
+       "My question node, basically: a specific, falsifiable instance of the bigger 'so what' question about archaic introgression.",
+       "Still coming to terms with how a single admixture pulse ~50-60kya produces the patchwork of introgressed segments we see today — the gloss undersells how contested the modelling still is.",
+       "The workhorse method behind every ancient-DNA claim in this portfolio; I want to understand the coverage/damage tradeoffs, not cite 'shotgun sequencing' as a black box.",
+       "Selection scans are how you'd actually test whether an introgressed variant was adaptive rather than just present — the missing link between my question and a real analysis.",
+       "The formal foundation under every admixture-timing and phylogenetic claim I keep citing without deriving myself.",
+       "The node that keeps me honest: 'percent Neanderthal' framing slides very easily into ancestry essentialism, and my own question is one bad headline away from doing exactly that.",
+       "Linh's linguistics portfolio has a version of this same question from the other side — worth reading together, not separately.",
+       "The theoretical bridge my whole portfolio is implicitly leaning on: genes and culture are not two separate evolutionary tracks."],
+      { node: [7], own: [1], link: [6] });
+
+    // Bram — primatology: chimpanzee culture, teaching, and whether cooperation research travels across species
+    const bram = mk("u-student2", "Bram: culture, teaching, and what counts as correction",
+      ["primevo-topic-chimpanzee-cultural-diversity", "primevo-topic-cooperation-and-alliances", "primevo-topic-social-play-and-cooperation", "primevo-topic-primate-archaeology", "primevo-method-camera-trap-citizen-science", "primevo-theory-cooperation-and-conflict", "ccp-theory-theory-of-mind", "hbec-theory-teaching", "primevo-topic-attachment-in-primates"],
+      [["self", "me"], ["question", "Do wild chimpanzees ever actively correct a juvenile's technique, or does the culture spread purely through exposure and practice, with 'teaching' added afterward by us?"], ["resource", "Whiten et al. (1999) Nature — Cultures in chimpanzees"], ["theory", "Natural pedagogy (Csibra & Gergely) — is ostensive, corrective teaching human-specific, or a matter of degree?"]],
+      [[0, 9, "This is the empirical case that got me into the whole question: real behavioural variants across chimpanzee communities that look, from the outside, exactly like traditions.", "evidence"],
+       [0, 10, "Cultural variation across communities is the evidence base my question is trying to explain a mechanism for — variation alone doesn't tell you how it spreads.", "evidence"],
+       [7, 6, "Teaching, if it means intentionally structuring another's learning, plausibly requires some minimal mind-reading — that's the hinge connecting these two theory nodes.", "theory"],
+       [10, 12, "Natural pedagogy is the strongest existing answer to my question, but it was built to explain human infants, not wild apes.", "theory"],
+       [1, 5, "Alliance formation only makes sense against a background theory of when cooperation is stable versus when it tips into conflict.", "theory"],
+       [4, 10, "Camera traps let me see repeated dyadic interactions without an observer changing the group's behaviour — the only realistic way I can imagine testing 'correction' rigorously.", "method"],
+       [8, 9, "Comparing early attachment across primates is my check against over-reading intentionality into ordinary primate social development.", "comparative"]],
+      ["Whiten 1999. My anchor.", "Alliance formation is the clearest case where 'cooperation' in primates has real fitness stakes, not just a nice story we tell about chimps.", "Interesting, thin notes so far.",
+       "Primate archaeology gives me a materially dated record of tool traditions, which is as close as this field gets to a fossilised 'lesson plan'.",
+       "The only method I can imagine actually testing repeated dyadic 'correction' events without an observer changing the group's behaviour.",
+       "Formal vocabulary for when alliance-building shades into conflict — useful, but almost too general to test against my specific question.",
+       "My hinge, basically: does teaching require reading intentions, or can culture spread through simpler biases without any mind-reading at all?",
+       "Teaching, defined as intentionally structuring another's learning, plausibly needs some minimal mind-reading — exactly what the ToM node is about.",
+       "Sofia's child-development portfolio has the human side of this; comparing early attachment across primates keeps me honest about what's actually human-specific."],
+      { node: [0], own: [1], link: [2] });
+    bram.visibility = "module";
+
+    // Linh — linguistics: whether phylogenetic method actually tests what it claims to, and the ethics of tree-thinking about living languages
+    mk("u-student3", "Linh: trees, correlations, and what the method can actually claim",
+      ["dlce-theory-language-evolution", "dlce-theory-phylogenetics", "dlce-topic-cultural-phylogenies", "dlce-topic-gene-language-correlation", "dlce-topic-coevolution-of-language-and-culture", "dlce-method-bayesian-phylogenetics", "dlce-scicomm-language-death-deficit-framing", "hbec-theory-cultural-transmission"],
+      [["self", "me"], ["question", "Are Bayesian phylogenetic trees of languages recovering a real historical process, or just finding whatever tree-like structure exists in any correlated dataset?"], ["resource", "Gray & Atkinson (2003) Nature — Indo-European origin from Bayesian phylogenetics"], ["method", "Want to actually learn coalescent-style population models, to sanity-check what 'phylogenetic signal' means outside genetics"]],
+      [[0, 8, "Everything else here is downstream of taking 'language evolves' as more than a metaphor.", "theory"],
+       [5, 9, "Bayesian phylogenetics is exactly the method my question is skeptical of — I want to trust it, but I need to know what it would look like if the method were wrong.", "method"],
+       [3, 9, "This node is where my skepticism about tree methods meets an even bigger claim — that language capacity itself has population-genetic correlates. If real, that raises the stakes on getting the tree method right.", "evidence"],
+       [4, 7, "Co-evolution of language and culture is cultural-transmission theory applied specifically to linguistic variants — I don't think DLCE and HBEC are describing different processes here.", "theory"],
+       [5, 11, "I keep hearing that phylogenetic methods borrowed their formal structure from population genetics; I want to trace that borrowing instead of taking it on faith.", "method"],
+       [6, 9, "Treating a dying language as a data point in a tree model, without naming what its loss costs the community, is a framing choice — not a neutral analytical default.", "ethics"],
+       [2, 1, "Cultural phylogenies is the applied case; phylogenetics theory is the machinery — I keep needing to go back and forth between the two.", "method"]],
+      ["Language evolution is the umbrella everything else in this portfolio hangs off — but it's really several different claims (origins, change, diversification) bundled under one label.",
+       "Standard toolkit, still learning it.", "Thin so far.",
+       "Priya's genomics portfolio raises whether introgressed regulatory variants shaped language-relevant regions; this is the linguistics-side node for that exact question.",
+       "The strongest general theory I have for why language and culture keep showing correlated structure without one simply causing the other.",
+       "This is the actual machinery behind every 'language family tree' figure I've been citing without fully trusting.",
+       "If the tree model quietly treats language death as mere data loss rather than a loss with real communities behind it, my formal question needs an ethical caveat too.",
+       "Cultural transmission theory generalises the exact process (with modification, with selection among variants) that language change is supposed to be one instance of."],
+      { node: [3, 6], link: [3] });
+
+    // Amara — cross-cultural psychology: measurement invariance as the question underneath every cross-cultural finding
+    const amara = mk("u-student4", "Amara: does the measure mean the same thing everywhere",
+      ["ccp-theory-cultural-psychology", "ccp-theory-individual-differences-approach", "ccp-domain-cross-cultural-samples", "ccp-domain-global-child-study-network", "ccp-topic-cross-cultural-norm-enforcement", "ccp-topic-fairness", "hbec-method-cross-cultural-databases", "hbec-topic-cross-cultural-generalizability", "hbec-domain-kinship-systems"],
+      [["self", "me — grew up across three countries, and got tired of hearing 'culture' used as if it were one variable"], ["question", "When a cross-cultural study finds a difference, how do we rule out that we mismeasured the construct in one of the cultures, rather than finding a genuine difference?"], ["resource", "Henrich, Heine & Norenzayan (2010) — The weirdest people in the world?"], ["method", "Measurement invariance testing — I can cite the concern, I can't yet run the actual statistical test for it"]],
+      [[0, 9, "This field is the reason I stopped assuming 'the cross-cultural difference' means what a headline says it means.", "theory"],
+       [2, 10, "If the samples aren't actually equivalent on the construct being measured, 'cross-cultural sample' is doing a lot of unexamined work in every finding built on it.", "method"],
+       [6, 12, "Cross-cultural databases are where the measurement-invariance problem shows up at scale — I want to learn the actual test, not just gesture at the concern.", "method"],
+       [1, 5, "An individual-differences approach to fairness would ask what varies within a culture, not just what differs between national averages.", "theory"],
+       [7, 10, "This is, almost exactly, my question already stated as an open topic in the graph — which tells me the field hasn't closed this gap, not that I'm missing something obvious.", "theory"],
+       [4, 8, "Norm enforcement that looks 'universal' in a lab task might just be reproducing whatever kinship-structured obligations already exist in that community.", "evidence"],
+       [11, 10, "The WEIRD critique raised an institutional version of my exact question over a decade before I had it — worth reading as a citation, not a slogan.", "history"]],
+      ["Cultural psychology takes seriously that cognition might not be substrate-independent of the culture doing the cognising — a bigger claim than most intro material lets on.",
+       "An individual-differences approach is the honest alternative to comparing crude national averages, but it needs the measurement work to actually be trustworthy.",
+       "Every claim in this portfolio depends on the sample being comparable across sites — this node is where that assumption either holds or doesn't.",
+       "The infrastructure question, not the content question: what does it take to run the same developmental task across dozens of very different field sites and trust the result?",
+       "Enforcement looks different depending on whether it's caregiver-mediated or peer-mediated, and I don't think the gloss distinguishes those yet.",
+       "Fairness intuitions are the test case everyone reaches for first in cross-cultural work, probably because the paradigms travel well — which might be exactly the problem.",
+       "Cross-cultural databases are only as good as the coding decisions behind them, and those decisions are usually made by people from one cultural background.",
+       "This node is, almost word for word, my own question — either reassuring (I'm not asking something silly) or worrying (it's still open after decades of work).",
+       "Kinship systems are the anthropological ground truth that a lot of psychology's 'cultural variables' are actually standing in for, often without saying so."],
+      { node: [7], own: [2], link: [4] });
+
+    // Sofia — child development: how much of early cooperation/fairness is culturally scaffolded vs. species-typical
+    const sofia = mk("u-student5", "Sofia: sharing before you're taught to share",
+      ["ccp-theory-developmental-psychology", "ccp-domain-children", "ccp-topic-cooperation-development", "ccp-topic-norm-acquisition", "ccp-domain-parenting", "hbec-topic-childrens-play", "hbec-topic-autonomy-socialization", "ccp-method-developmental-tasks", "primevo-topic-attachment-in-primates"],
+      [["self", "me — interested in how much of 'moral development' is culturally scaffolded versus species-typical"], ["question", "Is children's spontaneous resource-sharing already present before explicit norm-teaching, or does it only appear once caregivers start teaching fairness directly?"], ["resource", "Rakoczy — developmental timeline for shared intentionality and norm understanding (followed up after a reviewer flagged it on a classmate's proposal)"], ["theory", "Ontogenetic ritualisation / scaffolded autonomy — is the HBEC autonomy-socialisation timeline universal, or does it vary by community?"]],
+      [[0, 9, "This is the field-level version of the question I actually have about my own subject.", "theory"],
+       [1, 10, "The children domain node is the population my question is actually about, not an abstraction.", "evidence"],
+       [2, 3, "I think these are the same developmental process described from two angles — cooperating and following a norm are hard to cleanly separate in a 3-year-old.", "mechanism"],
+       [5, 6, "A lot of what gets called 'autonomy socialisation' at the community level is visible first, informally, in what children are allowed to do during play.", "theory"],
+       [8, 9, "Comparing my question to Bram's primate-attachment angle keeps me honest about what's actually developmentally distinctive to humans versus general to primates.", "comparative"],
+       [4, 6, "Parenting style and community-level autonomy socialisation are probably measuring overlapping things at different grain sizes, and the current nodes don't make that overlap explicit.", "evidence"],
+       [11, 10, "Rakoczy's developmental timeline is the piece I was missing to date when norm-sensitive sharing shows up relative to explicit teaching.", "evidence"]],
+      ["Developmental psychology gives me the timeline; the harder question is how much of it is species-typical versus scaffolded by a specific kind of childhood.",
+       "The domain node undersells how much 'children' as a research population varies by who is doing the caregiving, which is exactly what I want to compare.",
+       "Cooperation development is where my question lives operationally — the actual behaviours (sharing, helping) I'd need to code and compare.",
+       "Norm acquisition and cooperation development are often treated as two literatures; I think they're two names for overlapping developmental data.",
+       "Parenting style is usually the implicit variable behind 'cultural differences' in child outcomes, but it's rarely measured with the same care as the outcome itself.",
+       "Play is where a lot of the earliest cooperative and rule-following behaviour actually happens, informally, before anyone calls it 'teaching'.",
+       "The HBEC node that most directly challenges a WEIRD-default developmental timeline — worth reading against my own question.",
+       "The standard experimental tasks are well validated in a narrow set of populations; I don't yet know how much that limits what they can tell me.",
+       "Bram's primatology portfolio has the comparative case; keeping his attachment question next to mine stops me from over-crediting humans with something more general to primates."],
+      { node: [6], own: [2], link: [4] });
+    sofia.visibility = "module";
+
+    // Amara's whole (private) portfolio, shared directly with Priya by name — the other access
+    // pathway alongside per-item sharing and module-wide visibility.
+    this.shares.push({ subgraph_id: amara.id, profile_id: "u-student" });
+
+    // portfolio-level critiques: only available in full on the two module-visible portfolios
+    // (Bram's, Sofia's) — the three "private" portfolios above can only be reached item-by-item
+    // through Commons, which is itself one of the sharpest UX gaps this data surfaces.
+    this.reviews.push({ id: "r-demo-20", target_kind: "subgraph", proposal_id: null, node_id: null, edge_id: null, subgraph_id: bram.id, reviewer_id: "u-instructor", reviewer_username: "daniel", reviewer_active: true, rating: "accept",
+      commentary_md: "Strong portfolio: the chimpanzee-culture evidence is doing real work, and the ToM–teaching connection is the right hinge to worry about. I'd push you to make the 'correction vs. exposure' distinction operational — what would count as evidence of intentional correction that isn't just increased attention after a juvenile's mistake? Your camera-trap method note is heading there but doesn't close the loop yet. Also: two of your annotations are still one-liners — they're the two nodes doing the least work in the argument, which is probably not a coincidence.", week: 4, created_at: day(9) });
+    this.reviews.push({ id: "r-demo-21", target_kind: "subgraph", proposal_id: null, node_id: null, edge_id: null, subgraph_id: bram.id, reviewer_id: "u-student4", reviewer_username: "amara", reviewer_active: true, rating: "accept",
+      commentary_md: "I don't have the primate background to judge the empirical claims, but from a measurement standpoint: 'active correction' is exactly the kind of construct that needs an explicit operational definition before any comparison (cross-study or cross-species) means anything. Your camera-trap idea is a good start on that.", week: 5, created_at: day(6) });
+    this.reviews.push({ id: "r-demo-22", target_kind: "subgraph", proposal_id: null, node_id: null, edge_id: null, subgraph_id: sofia.id, reviewer_id: "u-instructor", reviewer_username: "daniel", reviewer_active: true, rating: "accept",
+      commentary_md: "The cooperation-development/norm-acquisition overlap is the strongest single move in this portfolio. I'd want to see it cash out in a specific comparative study rather than staying at the level of 'these might be the same process' — which cross-cultural sharing paradigm would actually distinguish the two developmental accounts?", week: 5, created_at: day(8) });
+    this.reviews.push({ id: "r-demo-23", target_kind: "subgraph", proposal_id: null, node_id: null, edge_id: null, subgraph_id: sofia.id, reviewer_id: "u-researcher", reviewer_username: "carla", reviewer_active: true, rating: "strongly_accept",
+      commentary_md: "Following up the Rakoczy reference properly rather than leaving it as a comment on someone else's proposal is exactly the right instinct. If you want a specific comparative measure to anchor the timeline against, ask me about the Global Child Study Network's shared protocols before you commit to a design.", week: 6, created_at: day(5) });
+    this.reviews.push({ id: "r-demo-24", target_kind: "subgraph", proposal_id: null, node_id: null, edge_id: null, subgraph_id: sofia.id, reviewer_id: "u-student3", reviewer_username: "linh", reviewer_active: true, rating: "accept",
+      commentary_md: "This connects to something Amara raised in her own portfolio about measurement invariance: if 'autonomy socialisation' timelines are being compared across communities, I'd want to know the developmental tasks were actually validated in each site, not just translated.", week: 6, created_at: day(4) });
+    this.helpful.push({ review_id: "r-demo-20", voter_id: "u-student2" }, { review_id: "r-demo-23", voter_id: "u-student5" }, { review_id: "r-demo-8", voter_id: "u-student4" });
   }
   private decorate(rs: Review[]): Review[] { return rs.map((r) => ({ ...r, helpful_count: this.helpful.filter((h) => h.review_id === r.id).length, helpful_by_me: this.helpful.some((h) => h.review_id === r.id && h.voter_id === this.me_.id) })); }
   private summarize(kind: ReviewTarget, id: string): ReviewSummary | null {

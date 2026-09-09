@@ -29,7 +29,7 @@ export default function App() {
   if (session && !profile) return <div className="page page-narrow"><div className="card"><h1>Not a member yet</h1><p>Your account exists but is not on the KGDJ allowlist (MPI-EVA and Uni-Leipzig addresses, or an invitation). Ask an editor for an invitation.</p></div></div>;
   return (
     <div className="app" onClick={() => help && setHelp(false)}>
-      {api?.mode === "mock" && <div className="mockbar">MOCK MODE — in-memory data, no backend. Persona via <code>?as=student|student2|researcher|editor|instructor|admin</code>. Nothing is stored.</div>}
+      {api?.mode === "mock" && <div className="mockbar">MOCK MODE — in-memory data, no backend. Persona via <code>?as=student|student2|student3|student4|student5|researcher|editor|instructor|admin</code>. Nothing is stored.</div>}
       <header className="topbar">
         <div className="brand"><b>Eva</b> KGDJ <small>Knowledge Graph Data Journal · MPI-EVA / Uni-Leipzig MSc</small></div>
         <nav className="nav">
