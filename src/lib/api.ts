@@ -34,6 +34,8 @@ export interface Api {
   // auth
   getSession(): Promise<Session | null>;
   signInWithEmail(email: string): Promise<{ sent: boolean; message: string }>;
+  /** Second half of code sign-in: the 6 digits from the email, typed in the same tab. */
+  verifyEmailCode(email: string, code: string): Promise<{ ok: boolean; message: string }>;
   signOut(): Promise<void>;
   onAuthChange(cb: (s: Session | null) => void): () => void;
   me(): Promise<Profile | null>;

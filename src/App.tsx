@@ -73,6 +73,11 @@ export default function App() {
           <Route path="/commons/proposals/:id" element={<CommonsProposalPage />} />
           <Route path="/leaderboard" element={<LeaderboardPage />} />
           <Route path="/account" element={<AccountPage />} />
+          {/* Anything unrecognised goes home rather than rendering an empty page under
+              the nav bar. Safe here, unlike in a public-landing-page app: these routes
+              only mount once a session exists, so this can never rewrite a URL that
+              supabase-js is still reading a token out of. */}
+          <Route path="*" element={<Navigate to="/explore" replace />} />
         </Routes>
       </main>
       <Tour open={tour} onClose={() => setTour(false)} />

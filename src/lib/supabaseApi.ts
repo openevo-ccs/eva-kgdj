@@ -10,6 +10,21 @@ import type {
   Profile, Proposal, ProposalDetail, ProposalStatus, ResearchGroup, Review, ReviewFlag, ReviewSummary, ReviewTarget, Session, Subgraph, SubgraphDetail, SubgraphLink, SubgraphNode, Visibility,
 } from "./types";
 
+// Supabase's auth errors are written for developers ("Token has expired or is invalid").
+// The pilot cohort is ~300-500 students who cannot act on that. Translate the three that
+// actually happen into something a student can do something about; pass anything else
+// through unchanged rather than swallowing a message we did not anticipate.
+export function friendlyAuthError(msg: string): string {
+  const m = msg.toLowerCase();
+  if (m.includes("rate limit") || m.includes("only request this after") || m.includes("too many"))
+    return "Too many sign-in emails have gone to this address recently (the limit is 2 per hour). Wait a little and try again, or ask an editor to invite you directly.";
+  if (m.includes("expired") || m.includes("invalid") || m.includes("not found"))
+    return "That code is wrong or has expired. Codes last one hour and work only once. Request a new one below.";
+  if (m.includes("not allowed") || m.includes("signup") || m.includes("disabled"))
+    return "That address is not on the KGDJ allowlist. Sign-in is open to @eva.mpg.de and @uni-leipzig.de addresses, plus invited ones. Ask an editor for an invitation.";
+  return msg;
+}
+
 function must<T>(r: { data: T | null; error: { message: string } | null }): T {
   if (r.error) throw new Error(r.error.message);
   return r.data as T;
@@ -30,10 +45,21 @@ export class SupabaseApi implements Api {
     const { data } = await this.sb.auth.getSession();
     return data.session ? { userId: data.session.user.id, email: data.session.user.email ?? null } : null;
   }
+  // A 6-digit code, not a magic link. `supabase/templates/magic_link.html` sends
+  // {{ .Token }} rather than {{ .ConfirmationURL }}, and the code is typed into the tab
+  // that asked for it. There is therefore no redirect: no URL fragment for HashRouter to
+  // collide with, no PKCE verifier that has to live in the same browser the mail opens in,
+  // and nothing clickable for an institutional mail scanner to consume before the student
+  // sees it. Every failure surfaces in the box they just typed into. See docs/kgdj/07-sign-in.md.
   async signInWithEmail(email: string) {
-    const { error } = await this.sb.auth.signInWithOtp({ email, options: { emailRedirectTo: window.location.origin + window.location.pathname } });
-    if (error) return { sent: false, message: error.message };
-    return { sent: true, message: "Check your inbox for the sign-in link." };
+    const { error } = await this.sb.auth.signInWithOtp({ email });
+    if (error) return { sent: false, message: friendlyAuthError(error.message) };
+    return { sent: true, message: `We sent a 6-digit code to ${email}. It is valid for one hour.` };
+  }
+  async verifyEmailCode(email: string, code: string) {
+    const { error } = await this.sb.auth.verifyOtp({ email, token: code.trim(), type: "email" });
+    if (error) return { ok: false, message: friendlyAuthError(error.message) };
+    return { ok: true, message: "" };
   }
   async signOut() { await this.sb.auth.signOut(); }
   onAuthChange(cb: (s: Session | null) => void) {

@@ -1,0 +1,45 @@
+<!--
+  Eva KGDJ sign-in email.
+
+  Deliberately contains NO clickable sign-in link. {{ .Token }} is a 6-digit code the
+  person types back into the tab they already have open. See docs/kgdj/07-sign-in.md.
+
+  Do not "helpfully" add {{ .ConfirmationURL }} alongside the code. The link and the
+  code are the same one-time token: an institutional mail scanner that pre-clicks the
+  link to virus-check it consumes the token, and the code in the same email then fails
+  too. Code-only is what makes this immune to that.
+
+  Supabase substitutes {{ .Token }} here; this template is applied to the project by
+  `supabase config push`, from the [auth.email.template.magic_link] entry in config.toml.
+-->
+<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 15px; line-height: 1.55; color: #1c2430; max-width: 480px; margin: 0 auto; padding: 8px 4px;">
+
+  <p style="font-size: 18px; font-weight: 700; color: #272d63; margin: 0 0 4px;">
+    <span style="color: #006c66;">Eva</span> KGDJ
+  </p>
+  <p style="color: #5b6673; font-size: 13px; margin: 0 0 22px;">
+    Knowledge Graph Data Journal &middot; MPI-EVA / Uni-Leipzig MSc
+  </p>
+
+  <p style="margin: 0 0 14px;">Your sign-in code is:</p>
+
+  <p style="font-size: 34px; font-weight: 700; letter-spacing: 0.32em; color: #272d63; background: #e2ecec; border: 1px solid #cfe3e1; border-radius: 10px; padding: 16px 8px; text-align: center; margin: 0 0 20px; font-variant-numeric: tabular-nums;">
+    {{ .Token }}
+  </p>
+
+  <p style="margin: 0 0 14px;">
+    Type it into the Eva KGDJ tab you already have open. The code is valid for
+    <strong>one hour</strong> and works <strong>once</strong>.
+  </p>
+
+  <p style="margin: 0 0 20px; color: #5b6673; font-size: 13.5px;">
+    You can enter the code on any device &mdash; it does not have to be the one showing
+    this email.
+  </p>
+
+  <p style="border-top: 1px solid #e3e7ec; padding-top: 14px; margin: 0; color: #5b6673; font-size: 12.5px;">
+    If you did not ask to sign in, you can ignore this email and nothing will happen.
+    Nobody can use this code without also having access to your inbox.
+  </p>
+
+</div>
