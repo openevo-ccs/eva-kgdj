@@ -1,7 +1,12 @@
 // Builds src/mock/graph.json for the KGDJ's mock mode (VITE_KGDJ_MODE=mock):
 // the same 306 nodes / 499 edges the seed imports, in the shape the app's
 // data layer expects, so the whole UI can be exercised (and screenshot-tested)
-// without a Supabase project. Never contains people.
+// without a Supabase project. Never contains people. The committed
+// src/mock/graph.json is a build product (also required for `tsc`/`vite build`
+// to resolve mockApi.ts's static import, so it can't just be gitignored here).
+// Regenerating it needs the private openevo-ccs/eva-graph lab monorepo checked
+// out as a sibling of this repo's parent directory (source path below) — not
+// something a public contributor needs to do to build or run the app.
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
