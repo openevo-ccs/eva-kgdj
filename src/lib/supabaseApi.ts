@@ -6,8 +6,8 @@ import type { Api, CitationInput, CommonsDecisionInput, CommonsProposalInput, Co
 import type { PortfolioBackup } from "./backup";
 import type {
   Citation, CohortStats, CommonsItem, CommonsItemT, CommonsLink, CommonsParticipant, CommonsParticipantStatus, CommonsProposal, CommonsProposalDetail, CommonsReview, CommonsRole, CommonsSpace,
-  CommonsSpaceDetail, ConsentPurpose, Department, EdgeDetail, GraphEdge, GraphNode, LeaderboardRow, Module, ModuleMemberRole, NodeDetail, PrivateNode, PrivateNodeType, Profile, Proposal,
-  ProposalDetail, ProposalStatus, ResearchGroup, Review, ReviewFlag, ReviewSummary, ReviewTarget, Session, Subgraph, SubgraphDetail, SubgraphLink, SubgraphNode, Visibility,
+  CommonsSpaceDetail, ConsentPurpose, Department, EdgeDetail, GraphEdge, GraphNode, ItemComment, ItemCommentTarget, LeaderboardRow, Module, ModuleMemberRole, NodeDetail, PrivateNode, PrivateNodeType,
+  Profile, Proposal, ProposalDetail, ProposalStatus, ResearchGroup, Review, ReviewFlag, ReviewSummary, ReviewTarget, Session, Subgraph, SubgraphDetail, SubgraphLink, SubgraphNode, Visibility,
 } from "./types";
 
 function must<T>(r: { data: T | null; error: { message: string } | null }): T {
@@ -258,10 +258,26 @@ export class SupabaseApi implements Api {
     const endpoint = (nid: string | null, pid: string | null) => (nid ? nodeLabel[nid] ?? nid : pid ? privLabel[pid] ?? "a private idea" : "?");
     const out: CommonsItem[] = [];
     for (const r of nodeRows) if (scopedIds.has(r.subgraph_id)) { const g = sgById[r.subgraph_id]; out.push({ kind: "node", subgraph_id: g.id, subgraph_title: g.title, owner_username: ownerName[g.owner_id] ?? "member", module_name: g.module_id ? moduleName[g.module_id] ?? null : null, shared_at: r.shared_at, label: nodeLabel[r.node_id] ?? r.node_id, sub_label: r.custom_annotation || undefined, node_id: r.node_id }); }
-    for (const r of privRows) if (scopedIds.has(r.subgraph_id)) { const g = sgById[r.subgraph_id]; out.push({ kind: "private_node", subgraph_id: g.id, subgraph_title: g.title, owner_username: ownerName[g.owner_id] ?? "member", module_name: g.module_id ? moduleName[g.module_id] ?? null : null, shared_at: r.shared_at, label: r.label, sub_label: r.node_type }); }
-    for (const r of linkRows) if (scopedIds.has(r.subgraph_id)) { const g = sgById[r.subgraph_id]; out.push({ kind: "link", subgraph_id: g.id, subgraph_title: g.title, owner_username: ownerName[g.owner_id] ?? "member", module_name: g.module_id ? moduleName[g.module_id] ?? null : null, shared_at: r.shared_at, label: r.why, sub_label: `${endpoint(r.from_node_id, r.from_private_id)} → ${endpoint(r.to_node_id, r.to_private_id)}` }); }
+    for (const r of privRows) if (scopedIds.has(r.subgraph_id)) { const g = sgById[r.subgraph_id]; out.push({ kind: "private_node", subgraph_id: g.id, subgraph_title: g.title, owner_username: ownerName[g.owner_id] ?? "member", module_name: g.module_id ? moduleName[g.module_id] ?? null : null, shared_at: r.shared_at, label: r.label, sub_label: r.node_type, private_id: r.id }); }
+    for (const r of linkRows) if (scopedIds.has(r.subgraph_id)) { const g = sgById[r.subgraph_id]; out.push({ kind: "link", subgraph_id: g.id, subgraph_title: g.title, owner_username: ownerName[g.owner_id] ?? "member", module_name: g.module_id ? moduleName[g.module_id] ?? null : null, shared_at: r.shared_at, label: r.why, sub_label: `${endpoint(r.from_node_id, r.from_private_id)} → ${endpoint(r.to_node_id, r.to_private_id)}`, link_id: r.id }); }
     return out.sort((a, b) => b.shared_at.localeCompare(a.shared_at));
   }
+  // ---------------------------------------------------------------- per-item comments (0008)
+  private itemFilter(t: ItemCommentTarget) {
+    let q = this.t("item_comments").select("*").eq("subgraph_id", t.subgraph_id).eq("item_kind", t.item_kind);
+    if (t.node_id) q = q.eq("node_id", t.node_id); if (t.private_id) q = q.eq("private_id", t.private_id); if (t.link_id) q = q.eq("link_id", t.link_id);
+    return q;
+  }
+  async itemComments(target: ItemCommentTarget): Promise<ItemComment[]> {
+    const rows = must(await this.itemFilter(target).order("created_at")) as ItemComment[];
+    const names = await this.usernames(rows.map((r) => r.author_id));
+    return rows.map((r) => ({ ...r, author_username: names[r.author_id] ?? null }));
+  }
+  async addItemComment(target: ItemCommentTarget, body_md: string) {
+    const s = await this.getSession(); if (!s) throw new Error("not signed in");
+    must(await this.t("item_comments").insert({ subgraph_id: target.subgraph_id, item_kind: target.item_kind, node_id: target.node_id ?? null, private_id: target.private_id ?? null, link_id: target.link_id ?? null, author_id: s.userId, body_md }));
+  }
+  async removeItemComment(id: string) { must(await this.t("item_comments").delete().eq("id", id)); }
   // ---------------------------------------------------------------- commons spaces (0007)
   private async usernames(ids: (string | null | undefined)[]) {
     const uniq = [...new Set(ids.filter((x): x is string => !!x))];

@@ -4,8 +4,8 @@
 //                    and screenshot tests without a project (VITE_KGDJ_MODE=mock)
 import type {
   Citation, CohortStats, CommonsChangeType, CommonsDecisionOutcome, CommonsItem, CommonsParticipantStatus, CommonsProposal, CommonsProposalDetail,
-  CommonsReview, CommonsRole, CommonsSpace, CommonsSpaceDetail, ConsentPurpose, Decision, Department, EdgeDetail, EditorialDecision, GraphEdge, GraphNode, LeaderboardRow, Module, ModuleMemberRole,
-  NodeDetail, PrivateNode, PrivateNodeType, Profile, Proposal, ProposalDetail, ProposalStatus, Rating, ResearchGroup, Review, ReviewFlag, ReviewSummary,
+  CommonsReview, CommonsRole, CommonsSpace, CommonsSpaceDetail, ConsentPurpose, Decision, Department, EdgeDetail, EditorialDecision, GraphEdge, GraphNode, ItemComment, ItemCommentTarget, LeaderboardRow,
+  Module, ModuleMemberRole, NodeDetail, PrivateNode, PrivateNodeType, Profile, Proposal, ProposalDetail, ProposalStatus, Rating, ResearchGroup, Review, ReviewFlag, ReviewSummary,
   ReviewTarget, Session, Subgraph, SubgraphDetail, SubgraphLink, Visibility, ChangeType, CommonsJoinPolicy,
 } from "./types";
 import type { PortfolioBackup } from "./backup";
@@ -111,6 +111,10 @@ export interface Api {
   commonsReview(r: CommonsReviewInput): Promise<void>;
   commonsReviewsFor(proposal_id: string): Promise<CommonsReview[]>;
   commonsDecide(d: CommonsDecisionInput): Promise<void>;
+  // per-item comments on a shared portfolio item (0008) — see docs/kgdj/05-student-portfolio-uiux-review.md §4.2
+  itemComments(target: ItemCommentTarget): Promise<ItemComment[]>;
+  addItemComment(target: ItemCommentTarget, body_md: string): Promise<void>;
+  removeItemComment(id: string): Promise<void>;
   // account
   leaderboard(): Promise<LeaderboardRow[]>;
   consents(): Promise<Record<ConsentPurpose, boolean>>;

@@ -7,10 +7,15 @@
 //   already shipped, kept as a secondary tab rather than thrown away.
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import type { CommonsItem, CommonsJoinPolicy, CommonsKind, CommonsSpace } from "../lib/types";
+import type { CommonsItem, CommonsJoinPolicy, CommonsKind, CommonsSpace, ItemCommentTarget } from "../lib/types";
 import { COMMONS_JOIN_POLICY_LABEL } from "../lib/types";
 import { useApi, useSession } from "../state/session";
 import { Help } from "../components/Tip";
+import { ItemCommentThread } from "../components/ItemComments";
+
+function commentTarget(it: CommonsItem): ItemCommentTarget {
+  return { subgraph_id: it.subgraph_id, item_kind: it.kind, node_id: it.node_id ?? null, private_id: it.private_id ?? null, link_id: it.link_id ?? null };
+}
 
 const KIND_LABEL: Record<CommonsKind, string> = { node: "canonical node, annotated", private_node: "own idea", link: "connection" };
 const KIND_ICON: Record<CommonsKind, string> = { node: "●", private_node: "★", link: "→" };
@@ -124,7 +129,7 @@ function SharedItemsFeed() {
                 <span className="chip">{group.length} members</span>
               </div>
               <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
-                {group.map((it, i) => <li key={i}><Link to={`/portfolio/${it.subgraph_id}`}>{it.owner_username}</Link>{it.sub_label && <>: {it.sub_label}</>} <span className="muted">· {ago(it.shared_at)}</span></li>)}
+                {group.map((it, i) => <li key={i}><Link to={`/portfolio/${it.subgraph_id}`}>{it.owner_username}</Link>{it.sub_label && <>: {it.sub_label}</>} <span className="muted">· {ago(it.shared_at)}</span><ItemCommentThread target={commentTarget(it)} /></li>)}
               </ul>
               {group[0].node_id && <div className="row" style={{ marginTop: 6 }}><Link className="btn btn-mini" to={`/explore/${group[0].node_id}`}>canonical node →</Link></div>}
             </div>
@@ -145,6 +150,7 @@ function SharedItemsFeed() {
               <Link className="btn btn-mini" to={`/portfolio/${it.subgraph_id}`}>open in {it.subgraph_title} →</Link>
               {it.node_id && <Link className="btn btn-mini" to={`/explore/${it.node_id}`}>canonical node →</Link>}
             </div>
+            <ItemCommentThread target={commentTarget(it)} />
           </div>
         </div>)}
         </div>

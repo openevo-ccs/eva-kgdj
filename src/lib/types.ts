@@ -89,7 +89,16 @@ export interface CommonsItem {
   kind: CommonsKind; subgraph_id: string; subgraph_title: string; owner_username: string; module_name: string | null; shared_at: string;
   label: string; sub_label?: string;                    // sub_label: node's dept/type, or a link's "A → B"
   node_id?: string;                                       // present for kind "node" (open it in the canonical graph)
+  private_id?: string; link_id?: string;                  // present for kind "private_node" / "link" respectively — addresses the row for item_comments (0008)
 }
+
+// A comment thread scoped to ONE shared item (migration 0008_item_comments.sql; docs/kgdj/
+// 05-student-portfolio-uiux-review.md §4.2) — the lighter-weight middle option between "no
+// feedback at all" and granting full portfolio access. `item_kind` reuses CommonsKind's shape
+// (same three kinds subgraph rows come in), not the same values as CommonsRole/PrivateNodeType.
+export type ItemCommentKind = CommonsKind;
+export interface ItemCommentTarget { subgraph_id: string; item_kind: ItemCommentKind; node_id?: string | null; private_id?: string | null; link_id?: string | null }
+export interface ItemComment extends ItemCommentTarget { id: string; author_id: string; author_username?: string | null; body_md: string; created_at: string; updated_at: string }
 
 // Commons Spaces (migration 0007_commons.sql; docs/kgdj/04-commons-design.md §4-6): an
 // opt-in, role-gated space where a group jointly curates content nobody individually

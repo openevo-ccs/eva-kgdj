@@ -7,8 +7,8 @@ import type { PortfolioBackup } from "./backup";
 import { portfolioMetrics } from "./report";
 import type {
   Citation, CohortStats, CommonsDecisionRow, CommonsItem, CommonsItemT, CommonsLink, CommonsParticipant, CommonsParticipantStatus, CommonsProposal, CommonsProposalDetail, CommonsReview, CommonsRole,
-  CommonsSpace, CommonsSpaceDetail, ConsentPurpose, Department, EdgeDetail, EditorialDecision, GraphEdge, GraphNode, LeaderboardRow, MetricKey, Module, ModuleMemberRole, NodeDetail, PrivateNode, PrivateNodeType,
-  Profile, Proposal, ProposalDetail, ProposalStatus, ResearchGroup, Review, ReviewFlag, ReviewSummary, ReviewTarget, Session, Subgraph, SubgraphDetail, SubgraphLink, SubgraphNode, Visibility,
+  CommonsSpace, CommonsSpaceDetail, ConsentPurpose, Department, EdgeDetail, EditorialDecision, GraphEdge, GraphNode, ItemComment, ItemCommentTarget, LeaderboardRow, MetricKey, Module, ModuleMemberRole,
+  NodeDetail, PrivateNode, PrivateNodeType, Profile, Proposal, ProposalDetail, ProposalStatus, ResearchGroup, Review, ReviewFlag, ReviewSummary, ReviewTarget, Session, Subgraph, SubgraphDetail, SubgraphLink, SubgraphNode, Visibility,
 } from "./types";
 
 type Raw = { departments: Department[]; nodes: GraphNode[]; edges: GraphEdge[] };
@@ -71,6 +71,7 @@ export class MockApi implements Api {
   private commonsProposalCitations: Record<string, string[]> = {};
   private commonsReviewsList: CommonsReview[] = [];
   private commonsDecisionsList: CommonsDecisionRow[] = [];
+  private itemCommentsList: ItemComment[] = [];
   private helpful: { review_id: string; voter_id: string }[] = [];
   private decisions: EditorialDecision[] = [];
   private flagList: ReviewFlag[] = [];
@@ -355,6 +356,17 @@ export class MockApi implements Api {
       payload: { kind: "question", label: "Does norm-sensitive sharing appear before or only after explicit fairness teaching?" }, rationale: "Follows directly from my own portfolio question — worth the group's attention since it bears on Amara's measurement-invariance item too.",
       status: "pending", review_restricted_to_role: null, submitted_at: day(2), updated_at: day(2), decided_at: null, result_item_id: null, result_link_id: null });
     this.commonsProposalCitations[cp1] = [];
+
+    // ---- per-item comments (0008) on a shared item — Priya's and Linh's independent shares
+    // both landed on gene-language-correlation (the "shared by multiple members" convergence
+    // case above); a real comment thread on Priya's share is the concrete demonstration of
+    // §4.2's "one comment on one idea" middle option, short of opening Priya's whole portfolio.
+    const priyaSg = this.sgList.find((g) => g.owner_id === "u-student")!;
+    const geneLang = bySlug("dlce-topic-gene-language-correlation");
+    this.itemCommentsList.push(
+      { id: nid("ic"), subgraph_id: priyaSg.id, item_kind: "node", node_id: geneLang.id, private_id: null, link_id: null, author_id: "u-student3", author_username: "linh", body_md: "I shared this exact node from the other side (linguistics) — did you mean the correlation itself, or the introgression-timing angle specifically?", created_at: day(6), updated_at: day(6) },
+      { id: nid("ic"), subgraph_id: priyaSg.id, item_kind: "node", node_id: geneLang.id, private_id: null, link_id: null, author_id: "u-student", author_username: "priya", body_md: "Introgression-timing, mostly — I want to know whether any of the introgressed regulatory variants actually sit near the language-relevant regions Dediu & Ladd flagged, not the correlation as a whole.", created_at: day(5), updated_at: day(5) },
+    );
   }
   private decorate(rs: Review[]): Review[] { return rs.map((r) => ({ ...r, helpful_count: this.helpful.filter((h) => h.review_id === r.id).length, helpful_by_me: this.helpful.some((h) => h.review_id === r.id && h.voter_id === this.me_.id) })); }
   private summarize(kind: ReviewTarget, id: string): ReviewSummary | null {
@@ -546,10 +558,38 @@ export class MockApi implements Api {
     for (const g of relevant) {
       const owner = EVERYONE.find((p) => p.id === g.owner_id)?.username ?? "member";
       for (const n of this.sgNodes.filter((x) => x.subgraph_id === g.id && x.shared)) { const node = byId[n.node_id]; out.push({ kind: "node", subgraph_id: g.id, subgraph_title: g.title, owner_username: owner, module_name: MODULE.name, shared_at: n.shared_at || n.added_at, label: node?.label ?? n.node_id, sub_label: n.custom_annotation || undefined, node_id: n.node_id }); }
-      for (const p of this.privNodes.filter((x) => x.subgraph_id === g.id && x.shared)) out.push({ kind: "private_node", subgraph_id: g.id, subgraph_title: g.title, owner_username: owner, module_name: MODULE.name, shared_at: p.shared_at || p.created_at, label: p.label, sub_label: p.node_type });
-      for (const l of this.links.filter((x) => x.subgraph_id === g.id && x.shared)) out.push({ kind: "link", subgraph_id: g.id, subgraph_title: g.title, owner_username: owner, module_name: MODULE.name, shared_at: l.shared_at || l.created_at, label: l.why, sub_label: `${label(l.from_node_id, l.from_private_id)} → ${label(l.to_node_id, l.to_private_id)}` });
+      for (const p of this.privNodes.filter((x) => x.subgraph_id === g.id && x.shared)) out.push({ kind: "private_node", subgraph_id: g.id, subgraph_title: g.title, owner_username: owner, module_name: MODULE.name, shared_at: p.shared_at || p.created_at, label: p.label, sub_label: p.node_type, private_id: p.id });
+      for (const l of this.links.filter((x) => x.subgraph_id === g.id && x.shared)) out.push({ kind: "link", subgraph_id: g.id, subgraph_title: g.title, owner_username: owner, module_name: MODULE.name, shared_at: l.shared_at || l.created_at, label: l.why, sub_label: `${label(l.from_node_id, l.from_private_id)} → ${label(l.to_node_id, l.to_private_id)}`, link_id: l.id });
     }
     return out.sort((a, b) => b.shared_at.localeCompare(a.shared_at));
+  }
+  // ---------------------------------------------------------------- per-item comments (0008)
+  // kgdj.can_see_item_comment(): full access to the subgraph, or that ONE row is shared and the
+  // viewer is a module member — the exact same rule that already gates the item's own read policy.
+  private canSeeItem(t: ItemCommentTarget) {
+    const g = this.sgList.find((x) => x.id === t.subgraph_id); if (!g) return false;
+    if (this.canSeeSubgraph(g)) return true;
+    if (!this.isModuleMemberOf(g.module_id)) return false;
+    if (t.item_kind === "node") return this.sgNodes.some((n) => n.subgraph_id === t.subgraph_id && n.node_id === t.node_id && n.shared);
+    if (t.item_kind === "private_node") return this.privNodes.some((n) => n.id === t.private_id && n.shared);
+    return this.links.some((l) => l.id === t.link_id && l.shared);
+  }
+  async itemComments(target: ItemCommentTarget): Promise<ItemComment[]> {
+    if (!this.canSeeItem(target)) throw new Error("item not found or not visible");
+    return this.itemCommentsList
+      .filter((c) => c.subgraph_id === target.subgraph_id && c.item_kind === target.item_kind && c.node_id === (target.node_id ?? null) && c.private_id === (target.private_id ?? null) && c.link_id === (target.link_id ?? null))
+      .map((c) => ({ ...c, author_username: this.withUsername(c.author_id) }))
+      .sort((a, b) => a.created_at.localeCompare(b.created_at));
+  }
+  async addItemComment(target: ItemCommentTarget, body_md: string) {
+    if (!body_md.trim()) throw new Error("A comment needs some text");
+    if (!this.canSeeItem(target)) throw new Error("new row violates row-level security policy (item not visible)");
+    this.itemCommentsList.push({ id: nid("ic"), subgraph_id: target.subgraph_id, item_kind: target.item_kind, node_id: target.node_id ?? null, private_id: target.private_id ?? null, link_id: target.link_id ?? null, author_id: this.me_.id, body_md, created_at: now(), updated_at: now() });
+  }
+  async removeItemComment(id: string) {
+    const c = this.itemCommentsList.find((x) => x.id === id); if (!c) return;
+    if (c.author_id !== this.me_.id && !this.isEditor()) throw new Error("new row violates row-level security policy (author or editor only)");
+    this.itemCommentsList = this.itemCommentsList.filter((x) => x.id !== id);
   }
   // ---------------------------------------------------------------- commons spaces (0007)
   private myCommonsParticipant(space_id: string) { return this.commonsParticipantsList.find((p) => p.commons_space_id === space_id && p.profile_id === this.me_.id); }
