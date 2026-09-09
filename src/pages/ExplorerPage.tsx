@@ -54,7 +54,18 @@ export default function ExplorerPage() {
   const [commons, setCommons] = useState<CommonsItem[]>([]);
   const viewDefaulted = useRef(false);
 
-  const reload = () => api.graph().then((g) => { setNodes(g.nodes); setEdges(g.edges); });
+  const [coverageByNode, setCoverageByNode] = useState<Record<string, { total: number; verified: number }>>({});
+  const reload = () => {
+    api.graph().then((g) => { setNodes(g.nodes); setEdges(g.edges); });
+    // Independent of the main graph fetch and allowed to fail quietly (an older mock
+    // build, or a project the migration hasn't reached yet, still renders cards fine
+    // without the chip) -- see NodeCards' coverageByNode prop.
+    api.citationCoverage().then((rows) => {
+      const byNode: Record<string, { total: number; verified: number }> = {};
+      for (const r of rows) if (r.target_kind === "node") byNode[r.target_id] = { total: r.total_citations, verified: r.verified_citations };
+      setCoverageByNode(byNode);
+    }).catch(() => {});
+  };
   const loadMine = async () => {
     const gs = (await api.subgraphs()).filter((g) => g.owner_id === profile?.id); setMine(gs); if (gs.length && target === "new") setTarget(gs[0].id);
     const details = await Promise.all(gs.map((g) => api.subgraph(g.id))); const ids = new Set<string>(); details.forEach((d) => d.nodes.forEach((n) => ids.add(n.node_id))); setMyNodeIds(ids);
@@ -234,7 +245,7 @@ export default function ExplorerPage() {
         </div>
         <div className="graph-host" data-tour="canvas">
           {view === "cards" ? (
-            <NodeCards nodes={visible.nodes} edges={visible.edges} deptById={deptById} onOpen={(id) => nav(`/explore/${id}`)} inPortfolioIds={myNodeIds} />
+            <NodeCards nodes={visible.nodes} edges={visible.edges} deptById={deptById} onOpen={(id) => nav(`/explore/${id}`)} inPortfolioIds={myNodeIds} coverageByNode={coverageByNode} />
           ) : <>
             <GraphCanvas nodes={visible.nodes} edges={visible.edges} deptById={deptById} layout={layout} physicsParams={physics} selectedId={nodeId ?? null} onSelect={select} selectedEdgeId={edgeId} onSelectEdge={selectEdge} onSelectionChange={setSel}
               contextMenuExtra={contextMenuExtra} communities={communities} communityColors={COMMUNITY_COLORS} highlightPath={path} encoding={encoding} autoFit={autoFit}

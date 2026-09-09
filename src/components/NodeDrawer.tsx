@@ -4,7 +4,7 @@ import type { CommonsItem, GraphNode, NodeDetail, Subgraph } from "../lib/types"
 import { CHANGE_LABEL, isVerifiedCitation } from "../lib/types";
 import { isEditor, useApi, useSession } from "../state/session";
 import { ContentFlags } from "./ContentFlags";
-import { DeptSwatch, ProvenanceChip, StatusChip } from "./Chips";
+import { CitationCoverageChip, DeptSwatch, ProvenanceChip, StatusChip } from "./Chips";
 import { ReviewForm, ReviewList, ReviewSummaryBar } from "./ReviewPanel";
 import { Help, Tip } from "./Tip";
 
@@ -27,7 +27,7 @@ export function NodeDrawer({ nodeId, nodesById, inPortfolio, sharedByClassmates,
   return (
     <div className="drawer">
       <div className="row" style={{ justifyContent: "space-between" }}><h2><DeptSwatch dept={dept} />{n.label}</h2><Tip text="Close (Esc)"><button className="btn" onClick={onClose} aria-label="Close">×</button></Tip></div>
-      <div className="row"><StatusChip status={n.status} /><Tip text={n.type_code === "scicomm-sensitivity" ? "Touches a live science-communication sensitivity — read the description before quoting this publicly." : "Node type"}><span className={n.type_code === "scicomm-sensitivity" ? "chip chip-scicomm" : "chip"}>{n.type_code}</span></Tip><ProvenanceChip prov={n.provenance} status={n.status} /><Tip text="Version: increases with every approved edit"><span className="muted">v{n.version}</span></Tip>{inPortfolio && <Tip text="This node is already in one of your portfolios"><span className="chip chip-verified">in your portfolio</span></Tip>}</div>
+      <div className="row"><StatusChip status={n.status} /><Tip text={n.type_code === "scicomm-sensitivity" ? "Touches a live science-communication sensitivity — read the description before quoting this publicly." : "Node type"}><span className={n.type_code === "scicomm-sensitivity" ? "chip chip-scicomm" : "chip"}>{n.type_code}</span></Tip><ProvenanceChip prov={n.provenance} status={n.status} /><Tip text="Version: increases with every approved edit"><span className="muted">v{n.version}</span></Tip><CitationCoverageChip total={d.citations.length} verified={d.citations.filter(isVerifiedCitation).length} />{inPortfolio && <Tip text="This node is already in one of your portfolios"><span className="chip chip-verified">in your portfolio</span></Tip>}</div>
       {d.flags.length > 0 && <div className="notice notice-bad" style={{ marginTop: 8 }}>⚑ {d.flags[0].reason.replace(/_/g, " ")} — this record needs a fresh identified review before promotion.</div>}
       <div className="tabs">{(["about", "reviews", "propose", "add"] as const).map((t) => <Tip key={t} text={TAB_TIP[t]} place="bottom"><button className={tab === t ? "active" : ""} onClick={() => setTab(t)}>{t === "reviews" ? `reviews (${d.reviews.length})` : t === "add" ? "add to my portfolio" : t}</button></Tip>)}</div>
 

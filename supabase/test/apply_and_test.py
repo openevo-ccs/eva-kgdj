@@ -155,6 +155,25 @@ def main():
     st, ver, desc = admin.q("select n.status::text, n.version, n.description from kgdj.nodes n where n.id=%s", (tom,))[0]
     assert st == "canonical" and ver == 2 and desc.startswith("Revised"), (st, ver, desc)
     assert admin.one("select count(*) from kgdj.node_citations where node_id=%s", (tom,)) == 1
+
+    # --- 0010: citation_coverage -- one unverified citation so far (cit, above,
+    # verification defaults to {}); add a second, real-shaped verified one and confirm
+    # the view counts total vs. verified correctly, and that a node with citations but
+    # none verified still gets a row (0, not absent).
+    verified_cit = admin.one(
+        "insert into kgdj.citations (doi, title, authors, year, verification) values "
+        "('10.1038/s41586-020-0000-1', 'A real-shaped PuRe-matched paper', array['Someone'], 2020, "
+        "'{\"pure\": {\"matched\": true, \"item_id\": \"item_999\"}}'::jsonb) returning id")
+    admin.q("insert into kgdj.node_citations (node_id, citation_id, role) values (%s, %s, 'supports')", (tom, verified_cit))
+    total, verified = admin.q("select total_citations, verified_citations from kgdj.citation_coverage where target_kind='node' and target_id=%s", (tom,))[0]
+    assert (total, verified) == (2, 1), (total, verified)
+    only_unverified = admin.one("select id from kgdj.nodes where slug = 'dag-theory-population-genetics'")
+    unver_cit = admin.one("insert into kgdj.citations (doi, title, authors, year) values ('10.1000/unverified-example', 'An unverified example', array['Nobody'], 2020) returning id")
+    admin.q("insert into kgdj.node_citations (node_id, citation_id, role) values (%s, %s, 'supports')", (only_unverified, unver_cit))
+    row = admin.q("select total_citations, verified_citations from kgdj.citation_coverage where target_kind='node' and target_id=%s", (only_unverified,))[0]
+    assert row == (1, 0), row
+    assert alice.one("select count(*) from kgdj.citation_coverage") >= 2, "members can read it too"
+    print("citation coverage ok (mixed verified/unverified counted correctly per node)")
     assert admin.one("select status::text from kgdj.proposed_changes where id=%s", (pid,)) == "approved"
     assert admin.one("select count(*) from kgdj.audit_log where action like 'approve:%'") == 1
     print("proposal lifecycle ok (gate, COI, blind review, editor approval -> canonical v2 + citation + audit)")

@@ -6,10 +6,11 @@ import type { Api, CitationInput, CommonsDecisionInput, CommonsProposalInput, Co
 import type { PortfolioBackup } from "./backup";
 import { portfolioMetrics } from "./report";
 import type {
-  Citation, CohortStats, CommonsDecisionRow, CommonsItem, CommonsItemT, CommonsLink, CommonsParticipant, CommonsParticipantStatus, CommonsProposal, CommonsProposalDetail, CommonsReview, CommonsRole,
+  Citation, CitationCoverage, CohortStats, CommonsDecisionRow, CommonsItem, CommonsItemT, CommonsLink, CommonsParticipant, CommonsParticipantStatus, CommonsProposal, CommonsProposalDetail, CommonsReview, CommonsRole,
   CommonsSpace, CommonsSpaceDetail, ConsentPurpose, ContentFlag, ContentFlagTargetKind, Department, EdgeDetail, EditorialDecision, GraphEdge, GraphNode, ItemComment, ItemCommentTarget, LeaderboardRow, MetricKey, Module, ModuleMemberRole,
   NodeDetail, PrivateNode, PrivateNodeType, Profile, Proposal, ProposalDetail, ProposalStatus, ResearchGroup, Review, ReviewFlag, ReviewSummary, ReviewTarget, Session, Subgraph, SubgraphDetail, SubgraphLink, SubgraphNode, Visibility,
 } from "./types";
+import { isVerifiedCitation } from "./types";
 
 type Raw = { departments: Department[]; nodes: GraphNode[]; edges: GraphEdge[] };
 // Five students with deliberately different disciplinary portfolios (genetics, primatology,
@@ -65,6 +66,16 @@ export class MockApi implements Api {
     { id: "c-3", doi: "10.1038/s41586-020-2818-3", title: "The major genetic risk factor for severe COVID-19 is inherited from Neanderthals", authors: ["Zeberg, H.", "Pääbo, S."], year: 2020, venue: "Nature", verification: {} },
     { id: "c-4", doi: "10.1017/s0140525x0999152x", title: "The weirdest people in the world?", authors: ["Henrich, J.", "Heine, S. J.", "Norenzayan, A."], year: 2010, venue: "Behavioral and Brain Sciences", verification: { source: "eva_literature", pure: { matched: true, method: "doi", item_id: "item_70213" } } },
     { id: "c-6", doi: "10.1073/pnas.0610848104", title: "Linguistic tone is related to the population frequency of the adaptive haplogroups of two brain size genes, ASPM and Microcephalin", authors: ["Dediu, D.", "Ladd, D. R."], year: 2007, venue: "PNAS", verification: { source: "eva_literature", pure: { matched: true, method: "doi", item_id: "item_44981" } } },
+  ];
+  // Real topical matches, not arbitrary: theory-of-mind really is grounded by the
+  // shared-intentionality paper, cultural-traditions-in-primates by Cultures in
+  // Chimpanzees. The third is deliberately the UNVERIFIED citation (c-3) on a node
+  // where it's genuinely the live open question -- lets the coverage chip demo both
+  // states against believable content rather than needing a "no sources" hunt.
+  private nodeCitationLinks: { node_id: string; citation_id: string }[] = [
+    { node_id: "n-246", citation_id: "c-1" }, // Theory of mind <- Tomasello et al. 2005
+    { node_id: "n-232", citation_id: "c-2" }, // Cultural traditions in primates <- Cultures in Chimpanzees
+    { node_id: "n-155", citation_id: "c-3" }, // COVID-Neanderthal haplotypes <- Zeberg & Pääbo (unverified)
   ];
   private propList: Proposal[] = [];
   private proposalCitations: Record<string, string[]> = {};
@@ -406,9 +417,12 @@ export class MockApi implements Api {
   async joinModule(module_id: string, role: "student" | "affiliate") { if (!this.members.some((m) => m.module_id === module_id && m.profile_id === this.me_.id)) this.members.push({ module_id, profile_id: this.me_.id, role }); }
   async leaveModule(module_id: string) { this.members = this.members.filter((m) => !(m.module_id === module_id && m.profile_id === this.me_.id && ["student", "affiliate"].includes(m.role))); }
   async graph() { const r = await this.data(); return { nodes: r.nodes.filter((n) => n.status !== "archived"), edges: r.edges.filter((e) => e.status !== "archived") }; }
+  private citationsFor(node_id: string): Citation[] {
+    return this.nodeCitationLinks.filter((l) => l.node_id === node_id).map((l) => this.citations.find((c) => c.id === l.citation_id)).filter((c): c is Citation => !!c);
+  }
   async node(id: string): Promise<NodeDetail> {
     const r = await this.data(); const node = r.nodes.find((n) => n.id === id); if (!node) throw new Error("node not found");
-    return { node, citations: [], reviews: this.decorate(this.reviews.filter((x) => x.node_id === id)), summary: this.summarize("node", id),
+    return { node, citations: this.citationsFor(id), reviews: this.decorate(this.reviews.filter((x) => x.node_id === id)), summary: this.summarize("node", id),
       proposals: this.propList.filter((p) => p.target_node_id === id && ["pending", "under_review", "revision_requested"].includes(p.status)).map((p) => this.mask(p)),
       edges: r.edges.filter((e) => (e.source_node_id === id || e.target_node_id === id) && e.status !== "archived"), flags: this.flagList.filter((f) => f.target_id === id && !f.resolved_at),
       contentFlags: this.contentFlagList.filter((f) => f.target_id === id) };
@@ -502,6 +516,14 @@ export class MockApi implements Api {
     if (!f || f.resolved_at) return;  // matches RLS: nothing to do once resolved
     if (f.flagged_by !== this.me_.id && !this.isEditor()) throw new Error("only the flagger or an editor may withdraw a flag");
     this.contentFlagList = this.contentFlagList.filter((x) => x.id !== id);
+  }
+  async citationCoverage(): Promise<CitationCoverage[]> {
+    const byNode = new Map<string, string[]>();
+    for (const l of this.nodeCitationLinks) (byNode.get(l.node_id) ?? byNode.set(l.node_id, []).get(l.node_id)!).push(l.citation_id);
+    return [...byNode.entries()].map(([target_id, citIds]) => {
+      const cits = citIds.map((id) => this.citations.find((c) => c.id === id)).filter((c): c is Citation => !!c);
+      return { target_kind: "node" as const, target_id, total_citations: cits.length, verified_citations: cits.filter(isVerifiedCitation).length };
+    });
   }
   async reviewQueue() {
     const proposals = await this.proposals({ status: ["pending", "under_review", "revision_requested"] });

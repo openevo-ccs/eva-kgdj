@@ -5,7 +5,7 @@
 // and opens the same node drawer/panel a graph click would — this is a second way to reach
 // the same detail view, not a second data path or a second editing surface.
 import type { Department, GraphEdge, GraphNode } from "../lib/types";
-import { DeptSwatch, StatusChip } from "./Chips";
+import { CitationCoverageChip, DeptSwatch, StatusChip } from "./Chips";
 
 export interface NodeCardsProps {
   nodes: GraphNode[];
@@ -14,9 +14,13 @@ export interface NodeCardsProps {
   onOpen: (id: string) => void;
   annotationOf?: (id: string) => string | undefined;
   inPortfolioIds?: Set<string>;
+  // node id -> {total, verified}. Absent entirely (not just per-id) when the caller
+  // hasn't loaded kgdj.citation_coverage — cards render fine either way, just without
+  // the chip, same as inPortfolioIds already being optional.
+  coverageByNode?: Record<string, { total: number; verified: number }>;
 }
 
-export function NodeCards({ nodes, edges, deptById, onOpen, annotationOf, inPortfolioIds }: NodeCardsProps) {
+export function NodeCards({ nodes, edges, deptById, onOpen, annotationOf, inPortfolioIds, coverageByNode }: NodeCardsProps) {
   const nodesById = Object.fromEntries(nodes.map((n) => [n.id, n]));
   if (!nodes.length) return <p className="muted" style={{ padding: 12 }}>Nothing matches the current filters.</p>;
   return (
@@ -36,6 +40,7 @@ export function NodeCards({ nodes, edges, deptById, onOpen, annotationOf, inPort
               <span className={n.type_code === "scicomm-sensitivity" ? "chip chip-scicomm" : "chip"} title={n.type_code === "scicomm-sensitivity" ? "Touches a live science-communication sensitivity — read the description before quoting this publicly." : undefined}>{n.type_code}</span>
               {dept && <span className="chip">{dept.abbr}</span>}
               {n.provenance?.shared ? <span className="chip" style={{ color: "#e2841e", borderColor: "#f0d3a8" }}>shared</span> : null}
+              {coverageByNode && <CitationCoverageChip total={coverageByNode[n.id]?.total ?? 0} verified={coverageByNode[n.id]?.verified ?? 0} />}
               {inPortfolioIds?.has(n.id) && <span className="chip chip-verified">in your portfolio</span>}
             </div>
             <details className="node-card-section" open={n.description.length > 0 && n.description.length < 180}>

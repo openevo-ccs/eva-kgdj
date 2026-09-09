@@ -6,7 +6,7 @@ import type { EdgeDetail } from "../lib/types";
 import { isVerifiedCitation } from "../lib/types";
 import { isEditor, useApi, useSession } from "../state/session";
 import { ContentFlags } from "./ContentFlags";
-import { ProvenanceChip, StatusChip } from "./Chips";
+import { CitationCoverageChip, ProvenanceChip, StatusChip } from "./Chips";
 import { ReviewForm, ReviewList, ReviewSummaryBar } from "./ReviewPanel";
 import { Help, Tip } from "./Tip";
 
@@ -23,7 +23,7 @@ export function EdgeDrawer({ edgeId, onClose, onChanged }: { edgeId: string; onC
   return (
     <div className="drawer">
       <div className="row" style={{ justifyContent: "space-between" }}><h2>Edge: <i>{e.relationship_code}</i></h2><Tip text="Close (Esc)"><button className="btn" onClick={onClose} aria-label="Close">×</button></Tip></div>
-      <div className="row"><StatusChip status={e.status} /><ProvenanceChip prov={e.provenance} status={e.status} /><Tip text="Weight 0–5: how strong or central the relationship is"><span className="chip">weight {e.weight}</span></Tip><span className="muted">v{e.version}</span></div>
+      <div className="row"><StatusChip status={e.status} /><ProvenanceChip prov={e.provenance} status={e.status} /><Tip text="Weight 0–5: how strong or central the relationship is"><span className="chip">weight {e.weight}</span></Tip><span className="muted">v{e.version}</span><CitationCoverageChip total={d.citations.length} verified={d.citations.filter(isVerifiedCitation).length} /></div>
       <div className="tabs"><button className={tab === "about" ? "active" : ""} onClick={() => setTab("about")}>about</button><button className={tab === "reviews" ? "active" : ""} onClick={() => setTab("reviews")}>reviews ({d.reviews.length})</button></div>
       {tab === "about" && <>
         <p><Link to={`/explore/${e.source_node_id}`}>{d.source?.label ?? e.source_node_id}</Link> <b>→ {e.relationship_code} →</b> <Link to={`/explore/${e.target_node_id}`}>{d.target?.label ?? e.target_node_id}</Link></p>

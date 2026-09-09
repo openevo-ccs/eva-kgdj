@@ -6,7 +6,7 @@ import type { Api, CitationInput, CommonsDecisionInput, CommonsProposalInput, Co
 import type { PortfolioBackup } from "./backup";
 import type {
   Citation, CohortStats, CommonsItem, CommonsItemT, CommonsLink, CommonsParticipant, CommonsParticipantStatus, CommonsProposal, CommonsProposalDetail, CommonsReview, CommonsRole, CommonsSpace,
-  CommonsSpaceDetail, ConsentPurpose, ContentFlag, ContentFlagTargetKind, Department, EdgeDetail, GraphEdge, GraphNode, ItemComment, ItemCommentTarget, LeaderboardRow, Module, ModuleMemberRole, NodeDetail, PrivateNode, PrivateNodeType,
+  CitationCoverage, CommonsSpaceDetail, ConsentPurpose, ContentFlag, ContentFlagTargetKind, Department, EdgeDetail, GraphEdge, GraphNode, ItemComment, ItemCommentTarget, LeaderboardRow, Module, ModuleMemberRole, NodeDetail, PrivateNode, PrivateNodeType,
   Profile, Proposal, ProposalDetail, ProposalStatus, ResearchGroup, Review, ReviewFlag, ReviewSummary, ReviewTarget, Session, Subgraph, SubgraphDetail, SubgraphLink, SubgraphNode, Visibility,
 } from "./types";
 
@@ -181,6 +181,7 @@ export class SupabaseApi implements Api {
   }
   async resolveContentFlag(id: string, note: string) { must(await this.sb.rpc("resolve_content_flag", { flag: id, note_text: note })); }
   async withdrawContentFlag(id: string) { must(await this.t("content_flags").delete().eq("id", id)); }  // RLS: own-open-flag-or-editor
+  async citationCoverage() { return must(await this.t("citation_coverage").select("*")) as CitationCoverage[]; }
   async reviewQueue() {
     const proposals = await this.proposals({ status: ["pending", "under_review", "revision_requested"] });
     const rows = must(await this.t("review_summary").select("*").eq("target_kind", "proposal")) as ReviewSummary[];

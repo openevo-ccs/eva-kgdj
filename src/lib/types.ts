@@ -74,6 +74,12 @@ export interface ContentFlag {
 }
 export interface EditorialDecision { id: string; proposal_id: string | null; node_id: string | null; edge_id: string | null; editor_id: string; decision: Decision; feedback: string; decided_at: string }
 
+// One row per node/edge that has >=1 citation (kgdj.citation_coverage, 0010) — the
+// bulk-fetch counterpart to isVerifiedCitation(): lets a list of many nodes/edges show
+// "backed by real sources or not" without loading every one's full citation list. A
+// target with no row has zero citations, not zero rows filtered out.
+export interface CitationCoverage { target_kind: ContentFlagTargetKind; target_id: string; total_citations: number; verified_citations: number }
+
 export interface Subgraph { id: string; owner_id: string; module_id: string | null; title: string; description: string; visibility: Visibility; last_checkpoint_week: number | null; created_at: string }
 // added_week/created_week are legacy — the UI no longer asks for them, kept only so old
 // backup files (lib/backup.ts) and pre-existing rows still round-trip; added_at/created_at
