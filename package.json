@@ -1,8 +1,8 @@
 {
   "name": "eva-kgdj",
-  "private": true,
+  "license": "MIT",
   "version": "0.1.0",
-  "description": "Ask Eva Knowledge Graph Data Journal — private, peer-reviewed knowledge graph platform for MPI-EVA and the Uni-Leipzig MSc Evolutionary Anthropology program",
+  "description": "Eva KGDJ (Knowledge Graph Data Journal) — open-source frontend for a peer-reviewed knowledge graph platform for MPI-EVA and the Uni-Leipzig MSc Evolutionary Anthropology program. The graph data and workflow live behind Supabase auth/RLS; this repo is the app shell.",
   "type": "module",
   "scripts": {
     "dev": "vite",

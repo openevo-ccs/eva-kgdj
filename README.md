@@ -1,25 +1,30 @@
 # Eva KGDJ — Knowledge Graph Data Journal
 
-Private, GDPR-minded, peer-reviewed knowledge-graph platform for MPI-EVA researchers and the Uni-Leipzig
-MSc Evolutionary Anthropology program. A separate app from the Ask Eva AI-agent whiteboard: it shares
-design tokens and the department registry values, nothing else (see `docs/kgdj/00-repo-audit.md`).
+Open-source frontend for a GDPR-minded, peer-reviewed knowledge-graph platform for MPI-EVA researchers and
+the Uni-Leipzig MSc Evolutionary Anthropology program. This repo is the app shell (public by design); the
+actual graph data, review workflow, and personal data live behind Supabase auth + row-level security, not
+behind repo privacy. Sign-up is default-deny (email-domain allowlist), so nothing meaningful is exposed by
+this code being public. Split out of the private `openevo-ccs/eva-graph` lab monorepo (`apps/kgdj/`), which
+still holds the fuller design docs (ADR, GDPR compliance, roadmap) for lab-internal context.
+
+A separate app from the Ask Eva AI-agent whiteboard: it shares design tokens and the department registry
+values, nothing else.
 
 ```
-apps/kgdj/
-├── supabase/        Postgres schema, RLS, workflow, auth gate, seed, DB scenario test   (Phase 2)
+├── supabase/        Postgres schema, RLS, workflow, auth gate, seed, DB scenario test
 ├── src/
 │   ├── lib/         types · api seam · supabaseApi · mockApi · markdown · analytics
 │   ├── state/       session (auth + profile + departments)
 │   ├── components/  GraphCanvas (Cytoscape) · NodeDrawer · ReviewPanel · Markdown · Chips
 │   └── pages/       Login · Explorer · Proposals (+ new) · Proposal · Editorial · Portfolio · Leaderboard · Account
 ├── scripts/build-mock-data.mjs   -> src/mock/graph.json (306 nodes / 499 edges from mpi-eva-graph)
+├── .github/workflows/deploy.yml  builds + deploys to GitHub Pages on every push to main
 ├── index.html · vite.config.ts · tsconfig.json · package.json · .env.example
 ```
 
 ## Run
 
 ```bash
-cd apps/kgdj
 npm install
 npm run mock:build          # once; regenerate after scripts/build_mpi_eva_graph.py changes
 cp .env.example .env        # VITE_KGDJ_MODE=mock for offline UI work
@@ -29,14 +34,17 @@ npm run typecheck && npm run build
 
 Against Supabase: set `VITE_KGDJ_MODE=supabase`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`; apply
 `supabase/migrations` + seed (see `supabase/README.md`). Since 2026-09-06 this is all done for real
-(project `cxegvbakkyhsmooxifdc`, `eu-central-1`) via `supabase/config.toml` + `supabase config push` —
-see ADR §8 (`docs/kgdj/01-architecture-decision.md`).
+(project `cxegvbakkyhsmooxifdc`, `eu-central-1`) via `supabase/config.toml` + `supabase config push` — see
+ADR §8 (`docs/kgdj/01-architecture-decision.md`).
 
 **This directory is mirrored to a public repo, `openevo-ccs/eva-kgdj`** (open-source frontend; the graph
-data stays gated behind Supabase auth/RLS, not repo privacy), deployed via GitHub Actions to GitHub Pages:
-`https://openevo-ccs.github.io/eva-kgdj/`. No Cloudflare Access or other host-level gate — ADR §8 explains
-why (real scale ~300–500 users breaks the free tier, and RLS + domain-allowlisted sign-up is already the
-real boundary). The mirror is a manual `git subtree push` away from this directory, not auto-synced yet.
+data stays gated behind Supabase auth/RLS, not repo privacy), deployed automatically to **GitHub Pages** on
+every push to `main` (`.github/workflows/deploy.yml`): `https://openevo-ccs.github.io/eva-kgdj/`. The
+Supabase URL/anon key are GitHub Actions repo secrets — the anon key is safe to ship publicly by design
+(every read/write is RLS-checked server-side). No Cloudflare Access or other host-level gate in front of the
+static site — ADR §8 explains why (real scale ~300–500 users breaks the free tier, and RLS + domain-
+allowlisted sign-up is already the real security boundary, not obscurity of the app shell). The mirror is a
+manual `git subtree push` away from this directory, not auto-synced yet.
 
 ## What the UI does (priority order from the brief)
 
