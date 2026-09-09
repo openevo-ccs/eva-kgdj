@@ -143,7 +143,11 @@ export default function PortfolioPage() {
     if (t.kind === "node") await api.setNodeShared(sg.id, t.node_id, shared); else if (t.kind === "priv") await api.setPrivateNodeShared(t.id, shared); else await api.setLinkShared(t.id, shared);
     setOk(shared ? `Shared with ${moduleName}.` : "Un-shared."); load();
   };
-  const proposeNode = (p: PrivateNode) => nav("/proposals/new", { state: { prefill: { change_type: "add_node", label: p.label, type_code: p.node_type === "theory" ? "theory" : p.node_type === "method" ? "method" : "concept", description: p.source || `From a student portfolio: ${p.label}` } } });
+  // Always credit the portfolio origin, not only when the student left "source" blank —
+  // before this, naming a source (a DOI, a lecture) silently dropped the one signal that
+  // told a reviewer this claim started as a student's own idea rather than an import.
+  const portfolioNote = (p: { label: string; source: string | null }) => p.source ? `${p.source}\n\n(Originated as a student portfolio idea: "${p.label}".)` : `Originated as a student portfolio idea: "${p.label}".`;
+  const proposeNode = (p: PrivateNode) => nav("/proposals/new", { state: { prefill: { change_type: "add_node", label: p.label, type_code: p.node_type === "theory" ? "theory" : p.node_type === "method" ? "method" : "concept", description: portfolioNote(p) } } });
   const proposeLink = (l: SubgraphLink) => l.from_node_id && l.to_node_id && nav("/proposals/new", { state: { prefill: { change_type: "add_edge", source_node_id: l.from_node_id, target_node_id: l.to_node_id, relationship_code: l.lens || "relates-to", label: l.why.startsWith(DEFAULT_WHY) ? undefined : l.why.slice(0, 80) } } });
 
   const contextMenuExtra = (target: CtxTarget, liveSel: Selection): ContextMenuItem[] => {
@@ -227,11 +231,12 @@ export default function PortfolioPage() {
                   <p className="muted" style={{ marginTop: 8 }}><Link to={`/explore?edge=${singleCtx.id}`}>Open in the canonical graph →</Link></p>
                 </div>
               : <>
-            {mine && (unannotated > 0 || canonicalWording > 0 || !data.privateNodes.length || !data.links.length) && <div className="card" style={{ padding: "10px 12px" }}><b>Next steps</b> <Help text="Small nudges computed from your portfolio. They disappear as you go." /><ul className="nudges">
+            {mine && (unannotated > 0 || canonicalWording > 0 || !data.privateNodes.length || !data.links.length || (data.privateNodes.length > 0 && data.links.length > 0)) && <div className="card" style={{ padding: "10px 12px" }}><b>Next steps</b> <Help text="Small nudges computed from your portfolio. They disappear as you go." /><ul className="nudges">
               {unannotated > 0 && <li>{unannotated} canonical node{unannotated === 1 ? " has" : "s have"} no real annotation yet — click a node to write one.</li>}
               {canonicalWording > 0 && <li>{canonicalWording} adopted connection{canonicalWording === 1 ? " still uses" : "s still use"} the canonical wording — click an edge and say why it matters to you.</li>}
               {!data.privateNodes.length && <li>No node of your own yet — add a question you actually have.</li>}
               {!data.links.length && <li>No connection yet — the "because" sentences are the heart of the portfolio.</li>}
+              {data.privateNodes.length > 0 && data.links.length > 0 && <li><b>Your strongest idea can go further</b> — open a starred node and use "Propose to canonical graph" to put it up for real peer review. If it holds up, it becomes part of the institute's actual graph, credited to you.</li>}
             </ul></div>}
             {mine && <>
               <h3>Add your own node <Help text={Object.entries(PRIVATE_TYPE_HELP).map(([k, v]) => `${k}: ${v}`).join("\n")} /></h3>
@@ -358,7 +363,7 @@ function BulkPanel({ sel, data, graph, mine, nodesById, moduleName, onClose, onD
     try { for (const n of nodeRows) await api.removeNode(sgId, n.node_id); for (const p of privRows) await api.removePrivateNode(p.id); for (const l of linkRows) await api.removeLink(l.id); onDone("Removed."); } catch (e) { onErr((e as Error).message); } finally { setBusy(false); }
   };
   const doPropose = () => {
-    const items: { change_type: "add_node"; label: string; type_code: string; description: string }[] = privRows.map((p) => ({ change_type: "add_node", label: p.label, type_code: p.node_type === "theory" ? "theory" : p.node_type === "method" ? "method" : "concept", description: p.source || `From a student portfolio: ${p.label}` }));
+    const items: { change_type: "add_node"; label: string; type_code: string; description: string }[] = privRows.map((p) => ({ change_type: "add_node", label: p.label, type_code: p.node_type === "theory" ? "theory" : p.node_type === "method" ? "method" : "concept", description: p.source ? `${p.source}\n\n(Originated as a student portfolio idea: "${p.label}".)` : `Originated as a student portfolio idea: "${p.label}".` }));
     const edgeItems: { change_type: "add_edge"; source_node_id: string; target_node_id: string; relationship_code: string }[] = linkRows.filter((l) => l.from_node_id && l.to_node_id).map((l) => ({ change_type: "add_edge", source_node_id: l.from_node_id!, target_node_id: l.to_node_id!, relationship_code: l.lens || "relates-to" }));
     nav("/proposals/new", { state: { batch: { items: [...items, ...edgeItems] } } });
   };

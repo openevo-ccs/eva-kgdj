@@ -261,7 +261,7 @@ export default function ExplorerPage() {
               : edgeId ? <EdgeDrawer edgeId={edgeId} onClose={() => nav("/explore")} onChanged={() => setVersion((v) => v + 1)} />
               : <div className="drawer"><h2>Canonical graph explorer</h2>
                   <p className="muted">Click a node for its description, citations, reviews and open proposals; add it to your portfolio; or propose a change. Click an edge to see and review the relationship.</p>
-                  <p className="muted">Dashed nodes are the imported seed awaiting review — each needs identified reviewers before an editor promotes it. Hold <b>Ctrl</b> to select several nodes and edges, or right-click one for quick actions, then use <b>Add to my portfolio</b>.</p>
+                  <p className="muted">Most nodes are dashed: real material, drawn from vetted sources, but assembled by AI and not yet checked by a person. Solid green means an editor confirmed it after real review. Reviewing critically &mdash; and flagging what's wrong &mdash; is core work here, not an extra step. Hold <b>Ctrl</b> to select several nodes and edges, or right-click one for quick actions.</p>
                   {mine.length > 0 && <p className="muted">Nodes already in one of your portfolios: <b>{myNodeIds.size}</b>. <Link to="/portfolio">Open portfolios →</Link></p>}
                 </div>}
           </ResizableDrawer>

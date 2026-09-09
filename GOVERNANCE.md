@@ -7,6 +7,28 @@
 | **Status** | **Draft for editor ratification.** The thresholds in §3 are a policy choice, not a technical fact. Editors should agree them before the WiSe 2026/27 pilot and amend this file. |
 | **Written** | 2026-09-09 |
 
+## 0. What kind of trust this graph deserves
+
+This graph is grounded in real, vetted material — published department content,
+PuRe-verified citations, the institute's own literature corpus. But the graph
+itself — its structure, its summaries, the connections drawn between nodes — was
+substantially assembled with AI help. That is a weaker, different kind of trust
+than a normal textbook or a normal peer-reviewed database, and everyone using
+this app should hold it that way. (Decided explicitly, 2026-09-09.)
+
+The working assumption, for students and editors alike, is **trust but verify —
+and not even full trust going in**: possibly approximately correct, and
+structurally approximately correct. A citation's presence is real evidence about
+the source. It is not evidence that the summary or connection around it
+accurately represents that source.
+
+This is why review is the central activity of this course, not a formality
+layered on top of "real" content. Finding an error, an overstatement, a missing
+caveat, or a bad connection is exactly the kind of contribution this app exists
+to reward — as seriously as adding something new, sometimes more so. `canonical`
+status below exists to mark the narrow slice that has actually survived that
+scrutiny; see §3 for what "enough scrutiny" means.
+
 ## 1. What "canonical" means
 
 A canonical node or edge is a claim the institute is willing to show a newcomer

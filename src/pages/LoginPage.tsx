@@ -59,7 +59,7 @@ export default function LoginPage() {
     <div className="page"><div className="login card">
       <div className="brand" style={{ marginBottom: 10 }}><b>Eva</b> KGDJ</div>
       <h1 style={{ color: "var(--brand-navy)" }}>Sign in</h1>
-      <p className="muted">A private, peer-reviewed knowledge graph for MPI-EVA researchers and the Uni-Leipzig MSc Evolutionary Anthropology program. Codes are sent only to <code>@eva.mpg.de</code>, <code>@uni-leipzig.de</code> and invited addresses.</p>
+      <p className="muted">A knowledge graph for MPI-EVA and the Uni-Leipzig MSc Evolutionary Anthropology program, grounded in the institute's real research but assembled with AI help. Almost nothing in it has been checked by a person yet &mdash; that is your job as a member. Codes are sent only to <code>@eva.mpg.de</code>, <code>@uni-leipzig.de</code> and invited addresses.</p>
 
       {err && <div className="notice notice-bad" role="alert">{err}</div>}
       {ok && !err && <div className="notice notice-ok">{ok}</div>}
