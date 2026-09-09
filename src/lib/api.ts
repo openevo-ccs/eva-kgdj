@@ -3,18 +3,31 @@
 //   mockApi.ts     — in-memory, seeded from src/mock/graph.json, for UI work
 //                    and screenshot tests without a project (VITE_KGDJ_MODE=mock)
 import type {
-  Citation, CohortStats, CommonsItem, ConsentPurpose, Decision, Department, EdgeDetail, EditorialDecision, GraphEdge, GraphNode, LeaderboardRow, Module, ModuleMemberRole, NodeDetail,
-  PrivateNode, PrivateNodeType, Profile, Proposal, ProposalDetail, ProposalStatus, Rating, ResearchGroup, Review, ReviewFlag, ReviewSummary,
-  ReviewTarget, Session, Subgraph, SubgraphDetail, SubgraphLink, Visibility, ChangeType,
+  Citation, CohortStats, CommonsChangeType, CommonsDecisionOutcome, CommonsItem, CommonsParticipantStatus, CommonsProposal, CommonsProposalDetail,
+  CommonsReview, CommonsRole, CommonsSpace, CommonsSpaceDetail, ConsentPurpose, Decision, Department, EdgeDetail, EditorialDecision, GraphEdge, GraphNode, LeaderboardRow, Module, ModuleMemberRole,
+  NodeDetail, PrivateNode, PrivateNodeType, Profile, Proposal, ProposalDetail, ProposalStatus, Rating, ResearchGroup, Review, ReviewFlag, ReviewSummary,
+  ReviewTarget, Session, Subgraph, SubgraphDetail, SubgraphLink, Visibility, ChangeType, CommonsJoinPolicy,
 } from "./types";
 import type { PortfolioBackup } from "./backup";
 
-export interface ProposalInput { change_type: ChangeType; target_node_id?: string | null; target_edge_id?: string | null; payload: Record<string, unknown>; rationale: string; module_id?: string | null; submitter_anonymous: boolean; citation_ids: string[] }
+export interface ProposalInput {
+  change_type: ChangeType; target_node_id?: string | null; target_edge_id?: string | null; payload: Record<string, unknown>; rationale: string; module_id?: string | null;
+  submitter_anonymous: boolean; citation_ids: string[];
+  // Set when this proposal is "propose to canonical" on a Commons item (0007) — see api.promoteCommonsItem.
+  source_commons_item_id?: string | null;
+}
 export interface CitationInput { doi?: string | null; pure_handle?: string | null; title: string; authors: string[]; year?: number | null; venue?: string | null; url?: string | null }
 export interface ReviewInput { target_kind: ReviewTarget; target_id: string; rating: Rating; commentary_md: string; week?: number | null }
 export interface DecisionInput { proposal_id?: string | null; node_id?: string | null; edge_id?: string | null; decision: Decision; feedback?: string }
 export interface ProfilePatch { full_name?: string | null; department_id?: string | null; research_group_id?: string | null; affiliation_note?: string | null }
 export interface ForkItem { node_id: string; annotation: string }
+export interface CommonsSpaceInput { label: string; description?: string; module_id?: string | null; join_policy: CommonsJoinPolicy }
+export interface CommonsProposalInput {
+  commons_space_id: string; change_type: CommonsChangeType; target_item_id?: string | null; target_link_id?: string | null;
+  payload: Record<string, unknown>; rationale: string; review_restricted_to_role?: CommonsRole | null; citation_ids?: string[];
+}
+export interface CommonsReviewInput { proposal_id: string; rating: Rating; commentary_md: string }
+export interface CommonsDecisionInput { proposal_id: string; outcome: CommonsDecisionOutcome; rationale?: string }
 
 export interface Api {
   readonly mode: "supabase" | "mock";
@@ -84,6 +97,20 @@ export interface Api {
   importPortfolio(b: PortfolioBackup, title: string, module_id: string | null): Promise<Subgraph>;
   cohortStats(scope: "module" | "program" | "members", module_id?: string | null): Promise<CohortStats>;
   commonsItems(module_id?: string | null): Promise<CommonsItem[]>;
+  // commons spaces (0007) — see docs/kgdj/04-commons-design.md
+  commonsSpaces(): Promise<CommonsSpace[]>;
+  commonsSpace(id: string): Promise<CommonsSpaceDetail>;
+  createCommonsSpace(input: CommonsSpaceInput): Promise<CommonsSpace>;
+  joinCommonsSpace(space_id: string, role?: "viewer" | "contributor"): Promise<void>;
+  leaveCommonsSpace(space_id: string): Promise<void>;
+  setCommonsParticipant(space_id: string, profile_id: string, patch: { role?: CommonsRole; status?: CommonsParticipantStatus }): Promise<void>;
+  removeCommonsParticipant(space_id: string, profile_id: string): Promise<void>;
+  commonsProposals(space_id: string): Promise<CommonsProposal[]>;
+  commonsProposal(id: string): Promise<CommonsProposalDetail>;
+  createCommonsProposal(p: CommonsProposalInput, submit: boolean): Promise<string>;
+  commonsReview(r: CommonsReviewInput): Promise<void>;
+  commonsReviewsFor(proposal_id: string): Promise<CommonsReview[]>;
+  commonsDecide(d: CommonsDecisionInput): Promise<void>;
   // account
   leaderboard(): Promise<LeaderboardRow[]>;
   consents(): Promise<Record<ConsentPurpose, boolean>>;

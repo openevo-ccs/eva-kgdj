@@ -2,11 +2,12 @@
 // (scripts/build-mock-data.mjs). Pick a persona with ?as=student|student2|
 // researcher|editor|instructor|admin (default student). State lives for the page
 // session only. No real people, no network.
-import type { Api, CitationInput, DecisionInput, ForkItem, ProfilePatch, ProposalInput, ReviewInput } from "./api";
+import type { Api, CitationInput, CommonsDecisionInput, CommonsProposalInput, CommonsReviewInput, CommonsSpaceInput, DecisionInput, ForkItem, ProfilePatch, ProposalInput, ReviewInput } from "./api";
 import type { PortfolioBackup } from "./backup";
 import { portfolioMetrics } from "./report";
 import type {
-  Citation, CohortStats, CommonsItem, ConsentPurpose, Department, EdgeDetail, EditorialDecision, GraphEdge, GraphNode, LeaderboardRow, MetricKey, Module, ModuleMemberRole, NodeDetail, PrivateNode, PrivateNodeType,
+  Citation, CohortStats, CommonsDecisionRow, CommonsItem, CommonsItemT, CommonsLink, CommonsParticipant, CommonsParticipantStatus, CommonsProposal, CommonsProposalDetail, CommonsReview, CommonsRole,
+  CommonsSpace, CommonsSpaceDetail, ConsentPurpose, Department, EdgeDetail, EditorialDecision, GraphEdge, GraphNode, LeaderboardRow, MetricKey, Module, ModuleMemberRole, NodeDetail, PrivateNode, PrivateNodeType,
   Profile, Proposal, ProposalDetail, ProposalStatus, ResearchGroup, Review, ReviewFlag, ReviewSummary, ReviewTarget, Session, Subgraph, SubgraphDetail, SubgraphLink, SubgraphNode, Visibility,
 } from "./types";
 
@@ -62,6 +63,14 @@ export class MockApi implements Api {
   private propList: Proposal[] = [];
   private proposalCitations: Record<string, string[]> = {};
   private reviews: Review[] = [];
+  private commonsSpacesList: CommonsSpace[] = [];
+  private commonsParticipantsList: CommonsParticipant[] = [];
+  private commonsItemsList: CommonsItemT[] = [];
+  private commonsLinksList: CommonsLink[] = [];
+  private commonsProposalsList: CommonsProposal[] = [];
+  private commonsProposalCitations: Record<string, string[]> = {};
+  private commonsReviewsList: CommonsReview[] = [];
+  private commonsDecisionsList: CommonsDecisionRow[] = [];
   private helpful: { review_id: string; voter_id: string }[] = [];
   private decisions: EditorialDecision[] = [];
   private flagList: ReviewFlag[] = [];
@@ -316,6 +325,36 @@ export class MockApi implements Api {
     this.reviews.push({ id: "r-demo-24", target_kind: "subgraph", proposal_id: null, node_id: null, edge_id: null, subgraph_id: sofia.id, reviewer_id: "u-student3", reviewer_username: "linh", reviewer_active: true, rating: "accept",
       commentary_md: "This connects to something Amara raised in her own portfolio about measurement invariance: if 'autonomy socialisation' timelines are being compared across communities, I'd want to know the developmental tasks were actually validated in each site, not just translated.", week: 6, created_at: day(4) });
     this.helpful.push({ review_id: "r-demo-20", voter_id: "u-student2" }, { review_id: "r-demo-23", voter_id: "u-student5" }, { review_id: "r-demo-8", voter_id: "u-student4" });
+
+    // ---- Commons space: the CCP module's own joint-curation space (0007) — a third thing
+    // between one student's private portfolio and the institute-wide canonical graph; see
+    // docs/kgdj/04-commons-design.md §1. Daniel (instructor) is the founding steward, the five
+    // students are active contributors, Carla (a researcher outside the module) an invited
+    // reviewer — exercising the "not auto-derived from module_members" role model (§5).
+    const csId = "cs-ccp";
+    this.commonsSpacesList.push({ id: csId, module_id: MODULE.id, label: "CCP commons", description: "Where the WiSe 2026/27 cohort jointly curates open questions, resources and connections that don't belong to any one portfolio.", join_policy: "open_to_module_members", created_by: "u-instructor", created_at: day(40), updated_at: day(40) });
+    this.commonsParticipantsList.push(
+      { commons_space_id: csId, profile_id: "u-instructor", role: "steward", status: "active", invited_by: null, joined_at: day(40), created_at: day(40) },
+      { commons_space_id: csId, profile_id: "u-student", role: "contributor", status: "active", invited_by: "u-instructor", joined_at: day(38), created_at: day(38) },
+      { commons_space_id: csId, profile_id: "u-student2", role: "contributor", status: "active", invited_by: "u-instructor", joined_at: day(38), created_at: day(38) },
+      { commons_space_id: csId, profile_id: "u-student3", role: "contributor", status: "active", invited_by: "u-instructor", joined_at: day(38), created_at: day(38) },
+      { commons_space_id: csId, profile_id: "u-student4", role: "contributor", status: "active", invited_by: "u-instructor", joined_at: day(38), created_at: day(38) },
+      { commons_space_id: csId, profile_id: "u-student5", role: "contributor", status: "active", invited_by: "u-instructor", joined_at: day(38), created_at: day(38) },
+      { commons_space_id: csId, profile_id: "u-researcher", role: "reviewer", status: "active", invited_by: "u-instructor", joined_at: day(35), created_at: day(36) },
+    );
+    const ci1 = "ci-1", ci2 = "ci-2", ci3 = "ci-3";
+    this.commonsItemsList.push(
+      { id: ci1, commons_space_id: csId, kind: "question", label: "Is cooperation unique in kind or only degree?", description: "Raised in discussion of Bram's and Amara's portfolios — does human cooperation differ from other primates categorically, or only in degree?", content: {}, status: "active", created_by: "u-student4", updated_by: "u-instructor", provenance: { source: "seed", approved_by: "u-instructor", approved_at: day(20) }, promoted_to_node_id: null, created_at: day(20), updated_at: day(20) },
+      { id: ci2, commons_space_id: csId, kind: "resource", label: "Whiten et al. (1999) — Cultures in chimpanzees", description: "Nature. The empirical anchor for the cooperation-in-degree-vs-kind question above.", content: { doi: "10.1038/21415" }, status: "active", created_by: "u-student2", updated_by: "u-instructor", provenance: { source: "seed", approved_by: "u-instructor", approved_at: day(19) }, promoted_to_node_id: null, created_at: day(19), updated_at: day(19) },
+      { id: ci3, commons_space_id: csId, kind: "theory", label: "Measurement invariance as a precondition for cross-cultural claims", description: "A finding cannot be judged culture-general or culture-specific without first establishing the measure means the same thing in every sample compared.", content: {}, status: "active", created_by: "u-student4", updated_by: "u-instructor", provenance: { source: "seed", approved_by: "u-instructor", approved_at: day(15) }, promoted_to_node_id: null, created_at: day(15), updated_at: day(15) },
+    );
+    this.commonsLinksList.push({ id: "cl-1", commons_space_id: csId, source_item_id: ci1, target_item_id: ci2, label: "The Whiten evidence is the comparison case for whether cooperation is unique to humans.", lens: "evidence", created_by: "u-student4", created_at: day(18) });
+    // an open proposal, awaiting review — exercises the propose/review UI against a live target
+    const cp1 = "cp-1";
+    this.commonsProposalsList.push({ id: cp1, commons_space_id: csId, proposed_by: "u-student5", change_type: "add_item", target_item_id: null, target_link_id: null,
+      payload: { kind: "question", label: "Does norm-sensitive sharing appear before or only after explicit fairness teaching?" }, rationale: "Follows directly from my own portfolio question — worth the group's attention since it bears on Amara's measurement-invariance item too.",
+      status: "pending", review_restricted_to_role: null, submitted_at: day(2), updated_at: day(2), decided_at: null, result_item_id: null, result_link_id: null });
+    this.commonsProposalCitations[cp1] = [];
   }
   private decorate(rs: Review[]): Review[] { return rs.map((r) => ({ ...r, helpful_count: this.helpful.filter((h) => h.review_id === r.id).length, helpful_by_me: this.helpful.some((h) => h.review_id === r.id && h.voter_id === this.me_.id) })); }
   private summarize(kind: ReviewTarget, id: string): ReviewSummary | null {
@@ -373,8 +412,9 @@ export class MockApi implements Api {
   async createProposal(p: ProposalInput, submit: boolean) {
     if (submit && p.rationale.length < 20) throw new Error("A proposal needs a rationale of at least 20 characters before submission");
     if (submit && ["add_node", "edit_node", "add_edge", "edit_edge"].includes(p.change_type) && !p.citation_ids.length) throw new Error(`A ${p.change_type} proposal must reference at least one citation before submission`);
+    if (p.source_commons_item_id && !this.commonsItemsList.some((i) => i.id === p.source_commons_item_id && this.commonsIsParticipant(i.commons_space_id))) throw new Error("source_commons_item_id must reference a commons item you can see");
     const id = nid("p");
-    this.propList.push({ id, proposer_id: this.me_.id, change_type: p.change_type, target_node_id: p.target_node_id ?? null, target_edge_id: p.target_edge_id ?? null, payload: p.payload, rationale: p.rationale, module_id: p.module_id ?? null, status: submit ? "pending" : "draft", submitter_anonymous: p.submitter_anonymous, submitted_at: submit ? now() : null, updated_at: now(), decided_at: null, result_node_id: null, result_edge_id: null });
+    this.propList.push({ id, proposer_id: this.me_.id, change_type: p.change_type, target_node_id: p.target_node_id ?? null, target_edge_id: p.target_edge_id ?? null, payload: p.payload, rationale: p.rationale, module_id: p.module_id ?? null, status: submit ? "pending" : "draft", submitter_anonymous: p.submitter_anonymous, submitted_at: submit ? now() : null, updated_at: now(), decided_at: null, result_node_id: null, result_edge_id: null, source_commons_item_id: p.source_commons_item_id ?? null });
     this.proposalCitations[id] = p.citation_ids; return id;
   }
   async submitProposal(id: string) { const p = this.propList.find((x) => x.id === id)!; if (p.rationale.length < 20) throw new Error("A proposal needs a rationale of at least 20 characters before submission"); p.status = "pending"; p.submitted_at = now(); }
@@ -415,6 +455,8 @@ export class MockApi implements Api {
       const dept = r.departments.find((x) => x.code === pl.department_code);
       const n: GraphNode = { id: nid("n"), slug: (pl.slug || pl.label).toLowerCase().replace(/[^a-z0-9]+/g, "-"), label: pl.label, type_code: pl.type_code || "concept", description: pl.description || "", department_id: dept?.id ?? null, status: "canonical", external_ids: {}, provenance: { source: "kgdj", status: "canonical", proposal_id: p.id, proposer_id: p.proposer_id, approved_by: this.me_.id, approved_at: now(), assigned_by: "editorial-review" }, tags: [], version: 1, created_by: p.proposer_id, created_at: now(), updated_at: now(), canonical_since: now() };
       r.nodes.push(n); p.result_node_id = n.id;
+      // link_commons_promotion() (0007): stamp the source commons item back once its "propose to canonical" lands.
+      if (p.source_commons_item_id) { const src = this.commonsItemsList.find((i) => i.id === p.source_commons_item_id); if (src && !src.promoted_to_node_id) src.promoted_to_node_id = n.id; }
     } else if (p.change_type === "edit_node") {
       const n = r.nodes.find((x) => x.id === p.target_node_id)!; Object.assign(n, { label: pl.label ?? n.label, description: pl.description ?? n.description, type_code: pl.type_code ?? n.type_code, status: "canonical", version: n.version + 1, canonical_since: n.canonical_since || now(), provenance: { ...n.provenance, status: "canonical", approved_by: this.me_.id, approved_at: now(), assigned_by: "editorial-review" } }); p.result_node_id = n.id;
     } else if (p.change_type === "archive_node") { const n = r.nodes.find((x) => x.id === p.target_node_id)!; n.status = "archived"; }
@@ -508,6 +550,134 @@ export class MockApi implements Api {
       for (const l of this.links.filter((x) => x.subgraph_id === g.id && x.shared)) out.push({ kind: "link", subgraph_id: g.id, subgraph_title: g.title, owner_username: owner, module_name: MODULE.name, shared_at: l.shared_at || l.created_at, label: l.why, sub_label: `${label(l.from_node_id, l.from_private_id)} → ${label(l.to_node_id, l.to_private_id)}` });
     }
     return out.sort((a, b) => b.shared_at.localeCompare(a.shared_at));
+  }
+  // ---------------------------------------------------------------- commons spaces (0007)
+  private myCommonsParticipant(space_id: string) { return this.commonsParticipantsList.find((p) => p.commons_space_id === space_id && p.profile_id === this.me_.id); }
+  private commonsIsParticipant(space_id: string) { const p = this.myCommonsParticipant(space_id); return !!p && p.status === "active"; }
+  private commonsRoleAtLeast(space_id: string, need: CommonsRole) {
+    const p = this.myCommonsParticipant(space_id); if (!p || p.status !== "active") return false;
+    const order: CommonsRole[] = ["viewer", "contributor", "reviewer", "steward"];
+    return order.indexOf(p.role) >= order.indexOf(need);
+  }
+  private canSeeCommonsSpace(s: CommonsSpace) { return !!this.myCommonsParticipant(s.id) || (s.module_id != null && this.isModuleMemberOf(s.module_id)) || this.isEditor(); }
+  private withUsername(id: string | null) { return id ? EVERYONE.find((p) => p.id === id)?.username ?? null : null; }
+  async commonsSpaces(): Promise<CommonsSpace[]> {
+    await this.data();
+    return this.commonsSpacesList.filter((s) => this.canSeeCommonsSpace(s)).map((s) => ({ ...s, module_name: s.module_id ? MODULE.name : null }));
+  }
+  async commonsSpace(id: string): Promise<CommonsSpaceDetail> {
+    await this.data();
+    const space = this.commonsSpacesList.find((s) => s.id === id); if (!space) throw new Error("commons space not found or not visible");
+    if (!this.canSeeCommonsSpace(space)) throw new Error("commons space not found or not visible");
+    const canParticipate = this.commonsIsParticipant(id) || this.isEditor();
+    const items = canParticipate ? this.commonsItemsList.filter((i) => i.commons_space_id === id).map((i) => ({ ...i, created_by_username: this.withUsername(i.created_by) })) : [];
+    const links = canParticipate ? this.commonsLinksList.filter((l) => l.commons_space_id === id) : [];
+    const participants = this.commonsParticipantsList.filter((p) => p.commons_space_id === id).map((p) => ({ ...p, username: this.withUsername(p.profile_id) ?? p.profile_id }));
+    const myParticipant = participants.find((p) => p.profile_id === this.me_.id) ?? null;
+    return { space: { ...space, module_name: space.module_id ? MODULE.name : null }, myParticipant, participants, items, links };
+  }
+  async createCommonsSpace(input: CommonsSpaceInput) {
+    const id = nid("cs");
+    const space: CommonsSpace = { id, module_id: input.module_id ?? null, label: input.label, description: input.description ?? "", join_policy: input.join_policy, created_by: this.me_.id, created_at: now(), updated_at: now() };
+    this.commonsSpacesList.push(space);
+    // commons_space_bootstrap_steward() (0007): the creator becomes the founding steward.
+    this.commonsParticipantsList.push({ commons_space_id: id, profile_id: this.me_.id, role: "steward", status: "active", invited_by: null, joined_at: now(), created_at: now() });
+    return space;
+  }
+  async joinCommonsSpace(space_id: string, role: "viewer" | "contributor" = "contributor") {
+    const space = this.commonsSpacesList.find((s) => s.id === space_id); if (!space) throw new Error("commons space not found");
+    if (this.myCommonsParticipant(space_id)) throw new Error("already a participant");
+    let status: CommonsParticipantStatus;
+    if (space.join_policy === "open_to_module_members") {
+      if (!this.isModuleMemberOf(space.module_id)) throw new Error("new row violates row-level security policy (not a member of this space's module)");
+      status = "active";
+    } else if (space.join_policy === "request_approval") status = "requested";
+    else throw new Error("new row violates row-level security policy (this space is invite only)");
+    this.commonsParticipantsList.push({ commons_space_id: space_id, profile_id: this.me_.id, role, status, invited_by: null, joined_at: status === "active" ? now() : null, created_at: now() });
+  }
+  async leaveCommonsSpace(space_id: string) { this.commonsParticipantsList = this.commonsParticipantsList.filter((p) => !(p.commons_space_id === space_id && p.profile_id === this.me_.id)); }
+  async setCommonsParticipant(space_id: string, profile_id: string, patch: { role?: CommonsRole; status?: CommonsParticipantStatus }) {
+    if (!this.commonsRoleAtLeast(space_id, "steward") && !this.isEditor()) throw new Error("new row violates row-level security policy (stewards only)");
+    const p = this.commonsParticipantsList.find((x) => x.commons_space_id === space_id && x.profile_id === profile_id); if (!p) throw new Error("not a participant");
+    if (patch.role) p.role = patch.role;
+    if (patch.status) { p.status = patch.status; if (patch.status === "active" && !p.joined_at) p.joined_at = now(); }
+  }
+  async removeCommonsParticipant(space_id: string, profile_id: string) {
+    if (profile_id !== this.me_.id && !this.commonsRoleAtLeast(space_id, "steward") && !this.isEditor()) throw new Error("new row violates row-level security policy");
+    this.commonsParticipantsList = this.commonsParticipantsList.filter((p) => !(p.commons_space_id === space_id && p.profile_id === profile_id));
+  }
+  async commonsProposals(space_id: string) {
+    if (!this.commonsIsParticipant(space_id) && !this.isEditor()) throw new Error("commons space not found or not visible");
+    return this.commonsProposalsList.filter((p) => p.commons_space_id === space_id).sort((a, b) => b.updated_at.localeCompare(a.updated_at));
+  }
+  async commonsProposal(id: string): Promise<CommonsProposalDetail> {
+    const p = this.commonsProposalsList.find((x) => x.id === id); if (!p) throw new Error("commons proposal not found");
+    if (!this.commonsIsParticipant(p.commons_space_id) && !this.isEditor()) throw new Error("commons space not found or not visible");
+    const citations = (this.commonsProposalCitations[id] || []).map((c) => this.citations.find((x) => x.id === c)!).filter(Boolean);
+    const reviews = this.commonsReviewsList.filter((r) => r.proposal_id === id).map((r) => ({ ...r, reviewer_username: this.withUsername(r.reviewer_id) }));
+    const decisions = this.commonsDecisionsList.filter((d) => d.proposal_id === id);
+    const targetItem = p.target_item_id ? this.commonsItemsList.find((i) => i.id === p.target_item_id) ?? null : null;
+    const targetLink = p.target_link_id ? this.commonsLinksList.find((l) => l.id === p.target_link_id) ?? null : null;
+    return { proposal: p, citations, reviews, decisions, targetItem, targetLink, proposedByUsername: this.withUsername(p.proposed_by) };
+  }
+  async createCommonsProposal(p: CommonsProposalInput, submit: boolean) {
+    if (!this.commonsRoleAtLeast(p.commons_space_id, "contributor")) throw new Error("new row violates row-level security policy (contributor role required)");
+    if (submit && p.rationale.length < 10) throw new Error("A commons proposal needs a short rationale before submission");
+    if (submit && p.change_type === "add_item" && (!("kind" in p.payload) || !("label" in p.payload))) throw new Error("add_item payload needs at least {kind, label}");
+    if (submit && p.change_type === "add_link" && (!("source_item_id" in p.payload) || !("target_item_id" in p.payload) || !("label" in p.payload))) throw new Error("add_link payload needs {source_item_id, target_item_id, label}");
+    const id = nid("cp");
+    this.commonsProposalsList.push({ id, commons_space_id: p.commons_space_id, proposed_by: this.me_.id, change_type: p.change_type, target_item_id: p.target_item_id ?? null, target_link_id: p.target_link_id ?? null,
+      payload: p.payload, rationale: p.rationale, status: submit ? "pending" : "draft", review_restricted_to_role: p.review_restricted_to_role ?? null,
+      submitted_at: submit ? now() : null, updated_at: now(), decided_at: null, result_item_id: null, result_link_id: null });
+    this.commonsProposalCitations[id] = p.citation_ids ?? [];
+    return id;
+  }
+  async commonsReview(r: CommonsReviewInput) {
+    const p = this.commonsProposalsList.find((x) => x.id === r.proposal_id); if (!p) throw new Error("commons proposal not found");
+    if (p.proposed_by === this.me_.id) throw new Error("Conflict of interest: a proposer cannot review their own commons proposal");
+    if (!["pending", "under_review"].includes(p.status)) throw new Error(`Commons proposal is not open for review (status ${p.status})`);
+    if (!this.commonsIsParticipant(p.commons_space_id)) throw new Error("new row violates row-level security policy (must be an active participant)");
+    if (p.review_restricted_to_role && !this.commonsRoleAtLeast(p.commons_space_id, p.review_restricted_to_role)) throw new Error("new row violates row-level security policy (restricted to reviewers)");
+    if (this.commonsReviewsList.some((x) => x.proposal_id === r.proposal_id && x.reviewer_id === this.me_.id)) throw new Error("You already reviewed this proposal");
+    this.commonsReviewsList.push({ id: nid("cr"), proposal_id: r.proposal_id, reviewer_id: this.me_.id, reviewer_username: this.me_.username, rating: r.rating, commentary_md: r.commentary_md, created_at: now(), updated_at: now() });
+    if (p.status === "pending") p.status = "under_review";
+  }
+  async commonsReviewsFor(proposal_id: string) { return this.commonsReviewsList.filter((r) => r.proposal_id === proposal_id).map((r) => ({ ...r, reviewer_username: this.withUsername(r.reviewer_id) })); }
+  async commonsDecide(d: CommonsDecisionInput) {
+    const p = this.commonsProposalsList.find((x) => x.id === d.proposal_id); if (!p) throw new Error("commons proposal not found");
+    if (!this.commonsRoleAtLeast(p.commons_space_id, "steward") && !this.isEditor()) throw new Error("new row violates row-level security policy (stewards only)");
+    if (!["pending", "under_review", "revision_requested"].includes(p.status)) throw new Error(`Commons proposal is not decidable in status ${p.status}`);
+    this.commonsDecisionsList.push({ id: nid("cd"), proposal_id: d.proposal_id, decided_by: this.me_.id, outcome: d.outcome, rationale: d.rationale ?? "", decided_at: now() });
+    const pl = p.payload as Record<string, unknown>;
+    if (d.outcome === "reject") { p.status = "rejected"; p.decided_at = now(); return; }
+    if (d.outcome === "request_revision") { p.status = "revision_requested"; p.decided_at = null; return; }
+    if (d.outcome === "archive") {
+      if (!p.target_item_id) throw new Error("archive outcome needs a proposal with a target item");
+      const item = this.commonsItemsList.find((i) => i.id === p.target_item_id)!; item.status = "archived"; item.updated_by = this.me_.id; item.updated_at = now();
+      p.status = "approved"; p.decided_at = now(); p.result_item_id = p.target_item_id; return;
+    }
+    // outcome = approve
+    if (p.change_type === "add_item") {
+      const item: CommonsItemT = { id: nid("ci"), commons_space_id: p.commons_space_id, kind: pl.kind as PrivateNodeType, label: pl.label as string, description: (pl.description as string) ?? "",
+        content: (pl.content as Record<string, unknown>) ?? {}, status: "active", created_by: p.proposed_by!, updated_by: this.me_.id,
+        provenance: { proposal_id: p.id, approved_by: this.me_.id, approved_at: now() }, promoted_to_node_id: null, created_at: now(), updated_at: now() };
+      this.commonsItemsList.push(item); p.result_item_id = item.id;
+    } else if (p.change_type === "edit_item") {
+      const item = this.commonsItemsList.find((i) => i.id === p.target_item_id)!;
+      item.label = (pl.label as string) ?? item.label; item.description = (pl.description as string) ?? item.description;
+      item.content = { ...item.content, ...((pl.content as Record<string, unknown>) ?? {}) }; item.updated_by = this.me_.id; item.updated_at = now();
+      p.result_item_id = item.id;
+    } else if (p.change_type === "archive_item") {
+      const item = this.commonsItemsList.find((i) => i.id === p.target_item_id)!; item.status = "archived"; item.updated_by = this.me_.id; item.updated_at = now(); p.result_item_id = item.id;
+    } else if (p.change_type === "add_link") {
+      const link: CommonsLink = { id: nid("cl"), commons_space_id: p.commons_space_id, source_item_id: pl.source_item_id as string, target_item_id: pl.target_item_id as string, label: pl.label as string, lens: (pl.lens as string) ?? null, created_by: p.proposed_by!, created_at: now() };
+      this.commonsLinksList.push(link); p.result_link_id = link.id;
+    } else if (p.change_type === "edit_link") {
+      const link = this.commonsLinksList.find((l) => l.id === p.target_link_id)!; link.label = (pl.label as string) ?? link.label; link.lens = (pl.lens as string) ?? link.lens; p.result_link_id = link.id;
+    } else if (p.change_type === "archive_link") {
+      this.commonsLinksList = this.commonsLinksList.filter((l) => l.id !== p.target_link_id); p.result_link_id = p.target_link_id;
+    }
+    p.status = "approved"; p.decided_at = now();
   }
   private rowFor(p: Profile): LeaderboardRow {
     const r = this.raw!; const byId = Object.fromEntries(r.nodes.map((n) => [n.id, n]));

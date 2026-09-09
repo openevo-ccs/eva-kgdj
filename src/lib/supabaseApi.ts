@@ -2,10 +2,11 @@
 // Row-Level Security in supabase/migrations/0002_rls.sql (+ 0005_ux.sql) is the
 // authority — nothing here filters for permission, it only shapes queries.
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import type { Api, CitationInput, DecisionInput, ForkItem, ProfilePatch, ProposalInput, ReviewInput } from "./api";
+import type { Api, CitationInput, CommonsDecisionInput, CommonsProposalInput, CommonsReviewInput, CommonsSpaceInput, DecisionInput, ForkItem, ProfilePatch, ProposalInput, ReviewInput } from "./api";
 import type { PortfolioBackup } from "./backup";
 import type {
-  Citation, CohortStats, CommonsItem, ConsentPurpose, Department, EdgeDetail, GraphEdge, GraphNode, LeaderboardRow, Module, ModuleMemberRole, NodeDetail, PrivateNode, PrivateNodeType, Profile, Proposal,
+  Citation, CohortStats, CommonsItem, CommonsItemT, CommonsLink, CommonsParticipant, CommonsParticipantStatus, CommonsProposal, CommonsProposalDetail, CommonsReview, CommonsRole, CommonsSpace,
+  CommonsSpaceDetail, ConsentPurpose, Department, EdgeDetail, GraphEdge, GraphNode, LeaderboardRow, Module, ModuleMemberRole, NodeDetail, PrivateNode, PrivateNodeType, Profile, Proposal,
   ProposalDetail, ProposalStatus, ResearchGroup, Review, ReviewFlag, ReviewSummary, ReviewTarget, Session, Subgraph, SubgraphDetail, SubgraphLink, SubgraphNode, Visibility,
 } from "./types";
 
@@ -112,6 +113,7 @@ export class SupabaseApi implements Api {
     const row = must(await this.t("proposed_changes").insert({
       proposer_id: s.userId, change_type: p.change_type, target_node_id: p.target_node_id ?? null, target_edge_id: p.target_edge_id ?? null,
       payload: p.payload, rationale: p.rationale, module_id: p.module_id ?? null, submitter_anonymous: p.submitter_anonymous, status: "draft",
+      source_commons_item_id: p.source_commons_item_id ?? null,
     }).select("id").single()) as { id: string };
     if (p.citation_ids.length) must(await this.t("proposal_citations").insert(p.citation_ids.map((c) => ({ proposal_id: row.id, citation_id: c }))));
     if (submit) await this.submitProposal(row.id);
@@ -259,6 +261,91 @@ export class SupabaseApi implements Api {
     for (const r of privRows) if (scopedIds.has(r.subgraph_id)) { const g = sgById[r.subgraph_id]; out.push({ kind: "private_node", subgraph_id: g.id, subgraph_title: g.title, owner_username: ownerName[g.owner_id] ?? "member", module_name: g.module_id ? moduleName[g.module_id] ?? null : null, shared_at: r.shared_at, label: r.label, sub_label: r.node_type }); }
     for (const r of linkRows) if (scopedIds.has(r.subgraph_id)) { const g = sgById[r.subgraph_id]; out.push({ kind: "link", subgraph_id: g.id, subgraph_title: g.title, owner_username: ownerName[g.owner_id] ?? "member", module_name: g.module_id ? moduleName[g.module_id] ?? null : null, shared_at: r.shared_at, label: r.why, sub_label: `${endpoint(r.from_node_id, r.from_private_id)} → ${endpoint(r.to_node_id, r.to_private_id)}` }); }
     return out.sort((a, b) => b.shared_at.localeCompare(a.shared_at));
+  }
+  // ---------------------------------------------------------------- commons spaces (0007)
+  private async usernames(ids: (string | null | undefined)[]) {
+    const uniq = [...new Set(ids.filter((x): x is string => !!x))];
+    if (!uniq.length) return {} as Record<string, string>;
+    const rows = must(await this.t("profiles").select("id, username").in("id", uniq)) as { id: string; username: string }[];
+    return Object.fromEntries(rows.map((r) => [r.id, r.username]));
+  }
+  private async moduleNames(ids: (string | null | undefined)[]) {
+    const uniq = [...new Set(ids.filter((x): x is string => !!x))];
+    if (!uniq.length) return {} as Record<string, string>;
+    const rows = must(await this.t("modules").select("id, name").in("id", uniq)) as { id: string; name: string }[];
+    return Object.fromEntries(rows.map((r) => [r.id, r.name]));
+  }
+  async commonsSpaces(): Promise<CommonsSpace[]> {
+    const spaces = must(await this.t("commons_spaces").select("*").order("updated_at", { ascending: false })) as CommonsSpace[];
+    const names = await this.moduleNames(spaces.map((s) => s.module_id));
+    return spaces.map((s) => ({ ...s, module_name: s.module_id ? names[s.module_id] ?? null : null }));
+  }
+  async commonsSpace(id: string): Promise<CommonsSpaceDetail> {
+    const s = await this.getSession();
+    const [space, participantsRaw, items, links] = await Promise.all([
+      this.t("commons_spaces").select("*").eq("id", id).single().then(must) as Promise<CommonsSpace>,
+      this.t("commons_participants").select("*").eq("commons_space_id", id).then(must) as Promise<CommonsParticipant[]>,
+      this.t("commons_items").select("*").eq("commons_space_id", id).order("created_at").then(must) as Promise<CommonsItemT[]>,
+      this.t("commons_links").select("*").eq("commons_space_id", id).then(must) as Promise<CommonsLink[]>,
+    ]);
+    const names = await this.usernames([...participantsRaw.map((p) => p.profile_id), ...items.map((i) => i.created_by)]);
+    const moduleName = space.module_id ? (await this.moduleNames([space.module_id]))[space.module_id] ?? null : null;
+    const participants = participantsRaw.map((p) => ({ ...p, username: names[p.profile_id] ?? p.profile_id }));
+    const myParticipant = participants.find((p) => p.profile_id === s?.userId) ?? null;
+    return { space: { ...space, module_name: moduleName }, myParticipant, participants, items: items.map((i) => ({ ...i, created_by_username: names[i.created_by] ?? null })), links };
+  }
+  async createCommonsSpace(input: CommonsSpaceInput) {
+    const s = await this.getSession(); if (!s) throw new Error("not signed in");
+    return must(await this.t("commons_spaces").insert({ label: input.label, description: input.description ?? "", module_id: input.module_id ?? null, join_policy: input.join_policy, created_by: s.userId }).select("*").single()) as CommonsSpace;
+  }
+  async joinCommonsSpace(space_id: string, role: "viewer" | "contributor" = "contributor") {
+    const s = await this.getSession(); if (!s) throw new Error("not signed in");
+    const space = must(await this.t("commons_spaces").select("join_policy").eq("id", space_id).single()) as { join_policy: CommonsSpace["join_policy"] };
+    const status = space.join_policy === "open_to_module_members" ? "active" : space.join_policy === "request_approval" ? "requested" : null;
+    if (!status) throw new Error("This space is invite only — ask a steward to invite you.");
+    must(await this.t("commons_participants").insert({ commons_space_id: space_id, profile_id: s.userId, role, status, joined_at: status === "active" ? new Date().toISOString() : null }));
+  }
+  async leaveCommonsSpace(space_id: string) { const s = await this.getSession(); if (!s) throw new Error("not signed in"); must(await this.t("commons_participants").delete().eq("commons_space_id", space_id).eq("profile_id", s.userId)); }
+  async setCommonsParticipant(space_id: string, profile_id: string, patch: { role?: CommonsRole; status?: CommonsParticipantStatus }) {
+    const body: Record<string, unknown> = { ...patch }; if (patch.status === "active") body.joined_at = new Date().toISOString();
+    must(await this.t("commons_participants").update(body).eq("commons_space_id", space_id).eq("profile_id", profile_id));
+  }
+  async removeCommonsParticipant(space_id: string, profile_id: string) { must(await this.t("commons_participants").delete().eq("commons_space_id", space_id).eq("profile_id", profile_id)); }
+  async commonsProposals(space_id: string) { return must(await this.t("commons_proposals").select("*").eq("commons_space_id", space_id).order("updated_at", { ascending: false })) as CommonsProposal[]; }
+  async commonsProposal(id: string): Promise<CommonsProposalDetail> {
+    const proposal = must(await this.t("commons_proposals").select("*").eq("id", id).single()) as CommonsProposal;
+    const [cit, reviewsRaw, decisions, targetItem, targetLink] = await Promise.all([
+      this.t("commons_proposal_citations").select("citations(*)").eq("proposal_id", id).then(must) as Promise<{ citations: Citation }[]>,
+      this.t("commons_reviews").select("*").eq("proposal_id", id).order("created_at").then(must) as Promise<CommonsReview[]>,
+      this.t("commons_decisions").select("*").eq("proposal_id", id).order("decided_at").then(must) as Promise<CommonsProposalDetail["decisions"]>,
+      proposal.target_item_id ? (this.t("commons_items").select("*").eq("id", proposal.target_item_id).maybeSingle().then((r) => r.data) as Promise<CommonsItemT | null>) : Promise.resolve(null),
+      proposal.target_link_id ? (this.t("commons_links").select("*").eq("id", proposal.target_link_id).maybeSingle().then((r) => r.data) as Promise<CommonsLink | null>) : Promise.resolve(null),
+    ]);
+    const names = await this.usernames([proposal.proposed_by, ...reviewsRaw.map((r) => r.reviewer_id)]);
+    return { proposal, citations: cit.map((c) => c.citations), reviews: reviewsRaw.map((r) => ({ ...r, reviewer_username: names[r.reviewer_id] ?? null })), decisions, targetItem, targetLink, proposedByUsername: proposal.proposed_by ? names[proposal.proposed_by] ?? null : null };
+  }
+  async createCommonsProposal(p: CommonsProposalInput, submit: boolean) {
+    const s = await this.getSession(); if (!s) throw new Error("not signed in");
+    const row = must(await this.t("commons_proposals").insert({
+      commons_space_id: p.commons_space_id, proposed_by: s.userId, change_type: p.change_type, target_item_id: p.target_item_id ?? null, target_link_id: p.target_link_id ?? null,
+      payload: p.payload, rationale: p.rationale, review_restricted_to_role: p.review_restricted_to_role ?? null, status: "draft",
+    }).select("id").single()) as { id: string };
+    if (p.citation_ids?.length) must(await this.t("commons_proposal_citations").insert(p.citation_ids.map((c) => ({ proposal_id: row.id, citation_id: c }))));
+    if (submit) must(await this.t("commons_proposals").update({ status: "pending" }).eq("id", row.id));
+    return row.id;
+  }
+  async commonsReview(r: CommonsReviewInput) {
+    const s = await this.getSession(); if (!s) throw new Error("not signed in");
+    must(await this.t("commons_reviews").insert({ proposal_id: r.proposal_id, reviewer_id: s.userId, rating: r.rating, commentary_md: r.commentary_md }));
+  }
+  async commonsReviewsFor(proposal_id: string) {
+    const rows = must(await this.t("commons_reviews").select("*").eq("proposal_id", proposal_id).order("created_at")) as CommonsReview[];
+    const names = await this.usernames(rows.map((r) => r.reviewer_id));
+    return rows.map((r) => ({ ...r, reviewer_username: names[r.reviewer_id] ?? null }));
+  }
+  async commonsDecide(d: CommonsDecisionInput) {
+    const s = await this.getSession(); if (!s) throw new Error("not signed in");
+    must(await this.t("commons_decisions").insert({ proposal_id: d.proposal_id, decided_by: s.userId, outcome: d.outcome, rationale: d.rationale ?? "" }));
   }
   async leaderboard() { return must(await this.t("leaderboard").select("*")) as LeaderboardRow[]; }
   async consents() {

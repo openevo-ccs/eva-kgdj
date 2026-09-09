@@ -8,7 +8,7 @@ import { Help, Tip } from "../components/Tip";
 
 // Prefill/batch shapes a caller (e.g. PortfolioPage, turning a private idea into a real
 // proposal) passes via router state — see proposeNode/proposeLink/BulkPanel.doPropose there.
-type NodePrefill = { change_type: "add_node"; label: string; type_code: string; description: string };
+type NodePrefill = { change_type: "add_node"; label: string; type_code: string; description: string; source_commons_item_id?: string };
 type EdgePrefill = { change_type: "add_edge"; source_node_id: string; target_node_id: string; relationship_code: string; label?: string };
 export type ProposalPrefill = NodePrefill | EdgePrefill;
 export interface ProposalBatch { items: ProposalPrefill[] }
@@ -65,7 +65,7 @@ export function NewProposalPage() {
         : type === "edit_node" ? { label, type_code: typeCode, description: desc, ...(dept ? { department_code: dept } : {}) }
         : type === "add_edge" ? { source_node_id: targetNode, target_node_id: edgeTarget, relationship_code: rel, label: edgeLabel || undefined, weight }
         : type === "edit_edge" ? { relationship_code: rel, label: edgeLabel || undefined, weight } : {};
-      const id = await api.createProposal({ change_type: type, target_node_id: ["edit_node", "archive_node"].includes(type) ? targetNode : null, target_edge_id: isEdgeType ? targetEdge : null, payload, rationale, module_id: myModules[0]?.module.id ?? null, submitter_anonymous: anonymous, citation_ids: chosen.map((c) => c.id) }, !asDraft);
+      const id = await api.createProposal({ change_type: type, target_node_id: ["edit_node", "archive_node"].includes(type) ? targetNode : null, target_edge_id: isEdgeType ? targetEdge : null, payload, rationale, module_id: myModules[0]?.module.id ?? null, submitter_anonymous: anonymous, citation_ids: chosen.map((c) => c.id), source_commons_item_id: p0?.change_type === "add_node" ? p0.source_commons_item_id ?? null : null }, !asDraft);
       nav(`/proposals/${id}`);
     } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
   };
@@ -118,6 +118,7 @@ export function NewProposalPage() {
   return (
     <div className="page page-narrow">
       <h1>New proposal <Help text="A proposal is reviewed by peers before an editor applies it. Write the rationale as if for a reviewer who has not read your sources: what changes, and what evidence supports it." /></h1>
+      {p0?.change_type === "add_node" && p0.source_commons_item_id && <p className="muted">Promoting a commons item into the canonical graph — once approved, the item stays linked back to this node.</p>}
       <div className="card">
         <div className="field"><label>Change type</label><select value={type} onChange={(e) => setType(e.target.value as ChangeType)}>{Object.entries(CHANGE_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></div>
         {(type === "edit_node" || type === "archive_node" || type === "add_edge") && <div className="field"><label>{type === "add_edge" ? "From node" : "Target node"}</label><select value={targetNode} onChange={(e) => setTargetNode(e.target.value)}><option value="">— choose —</option>{nodeOpts.map((n) => <option key={n.id} value={n.id}>{n.label} ({n.type_code})</option>)}</select></div>}

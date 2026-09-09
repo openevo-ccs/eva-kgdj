@@ -8,6 +8,8 @@ import ProposalPage from "./pages/ProposalPage";
 import EditorialPage from "./pages/EditorialPage";
 import PortfolioPage from "./pages/PortfolioPage";
 import CommonsPage from "./pages/CommonsPage";
+import CommonsSpacePage from "./pages/CommonsSpacePage";
+import CommonsProposalPage from "./pages/CommonsProposalPage";
 import LeaderboardPage from "./pages/LeaderboardPage";
 import AccountPage from "./pages/AccountPage";
 import { Tour, tourDone } from "./components/Tour";
@@ -15,7 +17,7 @@ import { Tip } from "./components/Tip";
 
 const NAV_TIP: Record<string, string> = {
   explore: "The canonical, peer-reviewed graph of the institute's research", proposals: "Propose and review changes to the canonical graph", portfolio: "Your own orientation graph, built on the canonical one",
-  commons: "Ideas classmates shared with your module — one node, connection, or cluster at a time",
+  commons: "Joint-curation spaces your module can propose, review and decide together — plus items classmates shared individually",
   editorial: "Editors: decide on proposals and promote reviewed seed nodes", leaderboard: "Many boards for many strengths — opt in from Account", account: "Affiliation, consent, data export, deletion",
 };
 
@@ -67,6 +69,8 @@ export default function App() {
           <Route path="/portfolio" element={<PortfolioPage />} />
           <Route path="/portfolio/:id" element={<PortfolioPage />} />
           <Route path="/commons" element={<CommonsPage />} />
+          <Route path="/commons/spaces/:id" element={<CommonsSpacePage />} />
+          <Route path="/commons/proposals/:id" element={<CommonsProposalPage />} />
           <Route path="/leaderboard" element={<LeaderboardPage />} />
           <Route path="/account" element={<AccountPage />} />
         </Routes>
