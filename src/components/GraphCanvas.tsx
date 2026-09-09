@@ -137,7 +137,7 @@ export function GraphCanvas(p: GraphCanvasProps) {
           { selector: "node.proposed", style: { "border-style": "dashed", "border-color": "#7a4d9c", "border-width": 2, "background-opacity": 0.75 } },
           { selector: "node.canonical", style: { "border-color": "#1a6b46", "border-width": 2 } },
           { selector: "node[student = 1]", style: { "border-style": "double", "border-width": 4, "border-color": "#7a2027" } },
-          { selector: "node:selected", style: { "border-color": "#17948a", "border-width": 4, "z-index": 10, "overlay-color": "#17948a", "overlay-opacity": 0.15, "overlay-padding": 5 } },
+          { selector: "node:selected", style: { "border-color": "#006c66", "border-width": 4, "z-index": 10, "overlay-color": "#006c66", "overlay-opacity": 0.15, "overlay-padding": 5 } },
           { selector: "node.dim", style: { opacity: 0.18 } },
           { selector: "node.path", style: { "border-color": "#d42a3c", "border-width": 4, "background-blacken": -0.1 } },
           { selector: "node.shared", style: { "border-color": "#e2841e" } },

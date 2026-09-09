@@ -91,7 +91,7 @@ export function buildReportHtml(r: ReportInput): string {
  .muted{color:#7a808a;font-size:12px} table{border-collapse:collapse;width:100%;font-family:system-ui,sans-serif;font-size:12.5px} th,td{text-align:left;padding:5px 8px;border-bottom:1px solid #eee;vertical-align:top}
  th{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:#7a808a} .num{white-space:nowrap} .bar{display:inline-block;width:90px;height:8px;background:#f0f0ec;border-radius:4px;vertical-align:middle;margin-left:6px} .bar i{display:block;height:100%;border-radius:4px}
  .pos-above{color:#145c3b} .pos-below{color:#7a4d9c} .pos-around{color:#4a4f57} .next{font-family:system-ui,sans-serif;font-size:12.5px;background:#f7f7f5;padding:8px 10px;border-radius:8px}
- .sig{display:flex;gap:12px;flex-wrap:wrap} .sig div{flex:1;min-width:220px;border:1px solid #dcdcd6;border-radius:10px;padding:10px 12px;background:#fff} .sig b{display:block;font-size:14px} .callout{background:#e6f2f1;border-left:4px solid #0f6f6a;padding:10px 14px;margin:12px 0;font-family:system-ui,sans-serif;font-size:13px}
+ .sig{display:flex;gap:12px;flex-wrap:wrap} .sig div{flex:1;min-width:220px;border:1px solid #dcdcd6;border-radius:10px;padding:10px 12px;background:#fff} .sig b{display:block;font-size:14px} .callout{background:#e2ecec;border-left:4px solid #006c66;padding:10px 14px;margin:12px 0;font-family:system-ui,sans-serif;font-size:13px}
  .why{font-family:system-ui,sans-serif;font-size:12.5px;margin:0 0 6px;padding-left:10px;border-left:2px solid #dcdcd6} .why b{font-weight:600} @media print{body{margin:0}}
 </style></head><body>
 <h1>${esc(r.title)}</h1>
