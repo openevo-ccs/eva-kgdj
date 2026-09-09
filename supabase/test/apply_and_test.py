@@ -298,6 +298,105 @@ def main():
     mallory.expect_error("select kgdj.portfolio_cohort_stats('module', %s)", (module_id,), contains="not a member")  # a member, but not enrolled in this module
     print("anonymised cohort statistics ok (withheld below n=3, released with aggregates at n=3, scoped to module members)")
 
+    # --- 0007: commons spaces (docs/kgdj/04-commons-design.md §4-6) -------------------
+    # carla creates a module-scoped space; the bootstrap trigger makes her its founding steward.
+    space = carla.one("insert into kgdj.commons_spaces (module_id, label, join_policy, created_by) values (%s,'CCP commons','open_to_module_members',%s) returning id", (module_id, U["carla"]))
+    assert admin.q("select role::text, status::text from kgdj.commons_participants where commons_space_id=%s and profile_id=%s", (space, U["carla"]))[0] == ("steward", "active")
+    print("commons space created; founding steward bootstrapped")
+
+    # join-policy gating: module members may self-join open_to_module_members; a non-member may not
+    alice.q("insert into kgdj.commons_participants (commons_space_id, profile_id, role, status) values (%s,%s,'contributor','active')", (space, U["alice"]))
+    frank.q("insert into kgdj.commons_participants (commons_space_id, profile_id, role, status) values (%s,%s,'viewer','active')", (space, U["frank"]))
+    mallory.expect_error("insert into kgdj.commons_participants (commons_space_id, profile_id, role, status) values (%s,%s,'contributor','active')", (space, U["mallory"]), contains="row-level security")
+    print("join-policy gating ok (module members self-join open_to_module_members; a non-member cannot)")
+
+    # role-gated proposing: a viewer cannot submit a commons proposal, a contributor can
+    frank.expect_error(
+        "insert into kgdj.commons_proposals (commons_space_id, proposed_by, change_type, payload, rationale, status) values (%s,%s,'add_item','{\"kind\":\"question\",\"label\":\"x\"}','too short but irrelevant here','pending')",
+        (space, U["frank"]), contains="row-level security")
+    carla.q("update kgdj.commons_participants set role='contributor' where commons_space_id=%s and profile_id=%s", (space, U["frank"]))
+    prop1 = frank.one(
+        "insert into kgdj.commons_proposals (commons_space_id, proposed_by, change_type, payload, rationale, status, review_restricted_to_role) values (%s,%s,'add_item',%s,'A question worth the group''s attention.','pending','reviewer') returning id",
+        (space, U["frank"], '{"kind":"question","label":"Is cooperation unique in kind or only degree?"}'))
+    print("role-gated proposing ok (viewer blocked, promoted-to-contributor can submit)")
+
+    # role-gated review: alice (contributor only) is blocked by review_restricted_to_role='reviewer'; a steward is never blocked
+    alice.expect_error("insert into kgdj.commons_reviews (proposal_id, reviewer_id, rating, commentary_md) values (%s,%s,'accept','fine')", (prop1, U["alice"]), contains="row-level security")
+    carla.q("insert into kgdj.commons_reviews (proposal_id, reviewer_id, rating, commentary_md) values (%s,%s,'accept','Good addition, on topic for this space.')", (prop1, U["carla"]))
+    assert admin.one("select status::text from kgdj.commons_proposals where id=%s", (prop1,)) == "under_review", "first review flips pending -> under_review"
+    carla.q("update kgdj.commons_participants set role='reviewer' where commons_space_id=%s and profile_id=%s", (space, U["alice"]))
+    alice.q("insert into kgdj.commons_reviews (proposal_id, reviewer_id, rating, commentary_md) values (%s,%s,'accept','Agreed, and it connects to my own portfolio question.')", (prop1, U["alice"]))
+    frank.expect_error("insert into kgdj.commons_reviews (proposal_id, reviewer_id, rating, commentary_md) values (%s,%s,'accept','self')", (prop1, U["frank"]), contains="conflict of interest")
+    print("role-gated review ok (restricted-to-reviewer blocks a contributor, never a steward; promoted reviewer then succeeds; proposer still blocked by COI)")
+
+    # steward-only decisions: alice (reviewer, not steward) cannot decide; carla (steward) can
+    alice.expect_error("insert into kgdj.commons_decisions (proposal_id, decided_by, outcome) values (%s,%s,'approve')", (prop1, U["alice"]), contains="row-level security")
+    carla.q("insert into kgdj.commons_decisions (proposal_id, decided_by, outcome, rationale) values (%s,%s,'approve','Two identified reviews, both positive.')", (prop1, U["carla"]))
+    item1 = admin.one("select result_item_id from kgdj.commons_proposals where id=%s", (prop1,))
+    assert item1 is not None
+    row = admin.q("select kind::text, label, created_by, status::text from kgdj.commons_items where id=%s", (item1,))[0]
+    assert row == ("question", "Is cooperation unique in kind or only degree?", uuid.UUID(U["frank"]), "active"), row
+    assert admin.one("select count(*) from kgdj.audit_log where table_name='commons_proposals' and row_id=%s::text and action='approve:add_item'", (prop1,)) == 1, "promotion writes commons_items + audit_log atomically (same trigger, same transaction)"
+    print("steward-only decisions ok; approval writes commons_items + audit_log")
+
+    # a second item (carla proposes+reviews-not-needed-she's-steward... still needs a non-proposer review) + a link between the two
+    prop2 = carla.one("insert into kgdj.commons_proposals (commons_space_id, proposed_by, change_type, payload, rationale, status) values (%s,%s,'add_item',%s,'A resource worth sharing.','pending') returning id",
+                       (space, U["carla"], '{"kind":"resource","label":"Whiten et al. 1999, Cultures in chimpanzees"}'))
+    frank.q("insert into kgdj.commons_reviews (proposal_id, reviewer_id, rating, commentary_md) values (%s,%s,'accept','Directly relevant citation.')", (prop2, U["frank"]))
+    carla.q("insert into kgdj.commons_decisions (proposal_id, decided_by, outcome) values (%s,%s,'approve')", (prop2, U["carla"]))
+    item2 = admin.one("select result_item_id from kgdj.commons_proposals where id=%s", (prop2,))
+    prop3 = alice.one("insert into kgdj.commons_proposals (commons_space_id, proposed_by, change_type, payload, rationale, status) values (%s,%s,'add_link',%s,'These two ideas belong together.','pending') returning id",
+                       (space, U["alice"], f'{{"source_item_id":"{item1}","target_item_id":"{item2}","label":"The Whiten evidence is the comparison case for whether cooperation is unique."}}'))
+    carla.q("insert into kgdj.commons_reviews (proposal_id, reviewer_id, rating, commentary_md) values (%s,%s,'accept','Sound connection.')", (prop3, U["carla"]))
+    carla.q("insert into kgdj.commons_decisions (proposal_id, decided_by, outcome) values (%s,%s,'approve')", (prop3, U["carla"]))
+    assert admin.one("select count(*) from kgdj.commons_links where source_item_id=%s and target_item_id=%s", (item1, item2)) == 1
+    print("commons links ok (add_link proposal -> review -> approval -> commons_links row)")
+
+    # archive outcome: a steward archives an item outright rather than doing what a proposal asked
+    prop4 = frank.one("insert into kgdj.commons_proposals (commons_space_id, proposed_by, change_type, target_item_id, payload, rationale, status) values (%s,%s,'edit_item',%s,'{\"label\":\"tweak\"}','Minor wording tweak.','pending') returning id",
+                       (space, U["frank"], item2))
+    carla.q("insert into kgdj.commons_reviews (proposal_id, reviewer_id, rating, commentary_md) values (%s,%s,'neutral','This item should just be retired instead.')", (prop4, U["carla"]))
+    carla.q("insert into kgdj.commons_decisions (proposal_id, decided_by, outcome, rationale) values (%s,%s,'archive','Superseded by a better resource elsewhere.')", (prop4, U["carla"]))
+    assert admin.one("select status::text from kgdj.commons_items where id=%s", (item2,)) == "archived"
+    assert admin.one("select status::text from kgdj.commons_proposals where id=%s", (prop4,)) == "approved"
+    print("archive outcome ok (steward archives the target item instead of applying the proposal)")
+
+    # promotion onward to canonical (decision 5, §6.5): reuse the ordinary add_node pipeline, tagged with source_commons_item_id
+    canon_prop = frank.one(
+        "insert into kgdj.proposed_changes (proposer_id, change_type, payload, rationale, module_id, status, source_commons_item_id) values (%s,'add_node',%s,'Promoting a well-reviewed commons question into the canonical graph.',%s,'draft',%s) returning id",
+        (U["frank"], '{"label":"Is cooperation unique in kind or only degree?","type_code":"topic","description":"Whether human cooperation differs from other primates categorically or only in degree."}', module_id, item1))
+    frank.q("insert into kgdj.proposal_citations (proposal_id, citation_id) values (%s,%s)", (canon_prop, cit))
+    frank.q("update kgdj.proposed_changes set status='pending' where id=%s", (canon_prop,))
+    carla.q("insert into kgdj.reviews (target_kind, proposal_id, reviewer_id, rating, commentary_md) values ('proposal',%s,%s,'accept','Ready for canonical.')", (canon_prop, U["carla"]))
+    eve.q("insert into kgdj.editorial_decisions (proposal_id, editor_id, decision, feedback) values (%s,%s,'approve','Approved; closes the loop from Commons.')", (canon_prop, U["eve"]))
+    result_node = admin.one("select result_node_id from kgdj.proposed_changes where id=%s", (canon_prop,))
+    assert result_node is not None
+    assert admin.one("select promoted_to_node_id from kgdj.commons_items where id=%s", (item1,)) == result_node, "link_commons_promotion() stamped the commons item once the canonical proposal was approved"
+    print("promotion onward to canonical ok (commons_items.promoted_to_node_id set via the existing add_node pipeline)")
+
+    # a foreign source_commons_item_id (one the reviewer can't see) is rejected by check_commons_promotion_source
+    other_space = carla.one("insert into kgdj.commons_spaces (module_id, label, join_policy, created_by) values (%s,'Unrelated space','invite_only',%s) returning id", (module_id, U["carla"]))
+    carla.q("insert into kgdj.commons_participants (commons_space_id, profile_id, role, status, invited_by) values (%s,%s,'contributor','active',%s)", (other_space, U["alice"], U["carla"]))  # invite_only: only a steward can add someone
+    other_prop = carla.one("insert into kgdj.commons_proposals (commons_space_id, proposed_by, change_type, payload, rationale, status) values (%s,%s,'add_item',%s,'x-space item.','pending') returning id",
+                            (other_space, U["carla"], '{"kind":"resource","label":"other"}'))
+    alice.q("insert into kgdj.commons_reviews (proposal_id, reviewer_id, rating, commentary_md) values (%s,%s,'accept','fine')", (other_prop, U["alice"]))  # alice is a participant of other_space, frank is not
+    carla.q("insert into kgdj.commons_decisions (proposal_id, decided_by, outcome) values (%s,%s,'approve')", (other_prop, U["carla"]))
+    other_item = admin.one("select result_item_id from kgdj.commons_proposals where id=%s", (other_prop,))
+    frank.expect_error(
+        "insert into kgdj.proposed_changes (proposer_id, change_type, payload, rationale, module_id, status, source_commons_item_id) values (%s,'add_node','{\"label\":\"y\"}','x',%s,'draft',%s)",
+        (U["frank"], module_id, other_item), contains="must reference a commons item you can see")
+    print("promotion-source guard ok (cannot tag a proposal with a commons item you cannot see)")
+
+    # reimport into portfolio: a subgraph row can reference the commons item it came from (provenance only)
+    priv2 = alice.one("insert into kgdj.subgraph_private_nodes (subgraph_id, node_type, label, source_commons_item_id) values (%s,'resource','From the CCP commons',%s) returning id", (sg, item1))
+    assert admin.one("select source_commons_item_id from kgdj.subgraph_private_nodes where id=%s", (priv2,)) == item1
+    print("reimport-to-portfolio ok (subgraph_private_nodes.source_commons_item_id round-trips)")
+
+    # leaderboard: commons contribution counts toward it (decision 6, §6.6)
+    frank.q("insert into kgdj.consent_records (profile_id, purpose, granted, policy_version) values (%s,'leaderboard_display',true,'v1')", (U["frank"],))
+    assert frank.one("select commons_items_contributed from kgdj.leaderboard where profile_id=%s", (U["frank"],)) == 1, "frank authored item1 (active); item2 (carla's) was archived and doesn't count for carla either"
+    print("commons counts toward the leaderboard ok")
+
     print("\nALL KGDJ DB TESTS PASSED")
 
 

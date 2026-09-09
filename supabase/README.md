@@ -10,7 +10,11 @@ supabase/
 │   ├── 0001_schema.sql     tables, enums, indexes, housekeeping triggers, reference vocabularies
 │   ├── 0002_rls.sql        helper functions + row-level security (visibility rules as signed off)
 │   ├── 0003_workflow.sql   submission gate, conflict-of-interest guard, approval function, audit triggers, graph view
-│   └── 0004_auth.sql       [Supabase-specific] sign-up gate (allowed domains + invite allowlist), profile bootstrap, erasure
+│   ├── 0004_auth.sql       [Supabase-specific] sign-up gate (allowed domains + invite allowlist), profile bootstrap, erasure
+│   ├── 0005_ux.sql         research groups + self-declared affiliation, adopted edges, helpful votes, extended leaderboard, cohort stats
+│   ├── 0006_portfolio_ux.sql  per-item "share with my module", active-days measures
+│   └── 0007_commons.sql    commons spaces (docs/kgdj/04-commons-design.md §4-6) — WRITTEN, validated locally,
+│                           NOT YET applied to the live project (see "Apply" below before `supabase db push`)
 ├── seed/
 │   ├── build_seed.py       mpi-eva-graph -> 0001_mpi_eva_graph.sql (306 nodes, 499 edges, all status = proposed)
 │   └── 0001_mpi_eva_graph.sql
@@ -89,6 +93,28 @@ Three RLS lessons are recorded inline in `0002_rls.sql`: select policies must be
 the row's own columns (INSERT … RETURNING), cross-table checks inside policies must go through
 security-definer helpers (recursion), and workflow triggers that write to other tables must be
 security-definer.
+
+## 0007 commons spaces — written, locally validated, not yet on the live project (2026-09-09)
+
+`0007_commons.sql` implements `docs/kgdj/04-commons-design.md` §4-6 in full (all six decisions
+resolved 2026-09-06). Validated the same way as the rest of this file — throwaway local Postgres,
+`test/apply_and_test.py` (now covering commons: space creation + founding-steward bootstrap,
+join-policy gating for `open_to_module_members` vs. a non-member, role-gated proposing (a viewer
+is blocked, a promoted contributor can submit), role-gated review (`review_restricted_to_role`
+blocks a contributor but never a steward; the proposer is still blocked by conflict-of-interest),
+steward-only decisions, `commons_links`, the `archive` decision outcome, promotion onward to the
+canonical graph via the *existing* `add_node` pipeline (`proposed_changes.source_commons_item_id`
++ `link_commons_promotion()`), the promotion-source visibility guard, portfolio reimport
+(`subgraph_private_nodes.source_commons_item_id`), and the leaderboard's new
+`commons_items_contributed` measure) — all pass. Two real bugs were caught and fixed during this
+validation pass (a test-harness scalar/row mistake, and a `text`/`uuid` comparison needing an
+explicit cast in one new assertion), which is the entire point of running it locally first.
+
+**Not yet pushed to the live project.** Applying it is a real schema change against
+`cxegvbakkyhsmooxifdc` (the same one every current member's data lives in) — do that deliberately
+(`supabase db push`) once the design itself has had a look, not as a side effect of this file
+existing. Frontend work (a Commons space page — join-request flow, propose/review/decide UI reusing
+`ReviewPanel` patterns) is separate follow-on work, not started.
 
 ## Decisions applied 2026-09-04 (after Dustin's review of Phase 2)
 
