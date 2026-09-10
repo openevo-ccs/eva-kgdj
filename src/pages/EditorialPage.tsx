@@ -6,6 +6,7 @@ import { useApi, useSession } from "../state/session";
 import { DeptSwatch, StatusChip } from "../components/Chips";
 import { Tip, Help } from "../components/Tip";
 import { departmentPairMatrix, pendantChains, underLinkedButPlausible, type DeptPair, type PendantChain, type UnderLinkedNode } from "../lib/coherence";
+import { computeFragility, type FragilityMetrics } from "../lib/graphMetrics";
 
 // A mean near 0 can mean "reviewers are lukewarm" or "reviewers actively disagree" — those call
 // for different editorial responses (more reviews vs. a synthesis conversation) and the mean
@@ -28,6 +29,11 @@ export default function EditorialPage() {
   const [underLinked, setUnderLinked] = useState<UnderLinkedNode[]>([]);
   const [deptPairs, setDeptPairs] = useState<DeptPair[]>([]);
   const [chains, setChains] = useState<PendantChain[]>([]);
+  // Structural fragility (docs/kgdj/16-graph-fragility.md): real graph algorithms
+  // (Hopcroft-Tarjan biconnected components, betweenness centrality) via a headless
+  // cytoscape instance — see lib/graphMetrics.ts for why that's the right tool here
+  // rather than a plain adjacency walk like coherence.ts's other measures.
+  const [fragility, setFragility] = useState<FragilityMetrics | null>(null);
   // Labels for content-flag targets: a flag can land on any node/edge, canonical or
   // proposed, not just the seed-promotion list below -- needs the full graph, not
   // just `seed`.
@@ -46,6 +52,7 @@ export default function EditorialPage() {
     setUnderLinked(underLinkedButPlausible(g.nodes, g.edges));
     setDeptPairs(departmentPairMatrix(g.nodes, g.edges, departments));
     setChains(pendantChains(g.nodes, g.edges, departments));
+    setFragility(computeFragility(g.nodes, g.edges));
   };
   useEffect(() => { load(); }, []);
   const emptyPairs = deptPairs.filter((p) => p.crossEdges === 0);
@@ -61,6 +68,7 @@ export default function EditorialPage() {
         <div className="stat" style={flags.length ? { borderColor: "#f0b8b8" } : {}}><b>{flags.length}</b><span>integrity flags</span></div>
         <div className="stat" style={contentFlags.length ? { borderColor: "#f0b8b8" } : {}}><b>{contentFlags.length}</b><span>reported issues</span></div>
         <div className="stat" style={emptyPairs.length ? { borderColor: "#e9cf95" } : {}}><b>{emptyPairs.length}</b><span>department pairs with no bridge</span></div>
+        <div className="stat" style={fragility?.articulationPointIds.size ? { borderColor: "#e9cf95" } : {}}><b>{fragility?.articulationPointIds.size ?? "—"}</b><span>articulation points</span></div>
       </div>
       {flags.length > 0 && <div className="card"><h2>Reviewer-integrity flags</h2><p className="muted">Every identified reviewer of these records has since erased their account. A fresh identified review is needed before (re)promotion.</p>
         <table><thead><tr><th>Target</th><th>Reason</th><th>Raised</th><th></th></tr></thead><tbody>{flags.map((f) => <tr key={f.id}><td>{f.target_kind} <Link to={f.target_kind === "node" ? `/explore/${f.target_id}` : `/proposals/${f.target_id}`}>{f.target_id.slice(0, 8)}…</Link></td><td>{f.reason.replace(/_/g, " ")}</td><td className="muted">{new Date(f.raised_at).toLocaleDateString()}</td><td><input placeholder="note" value={note} onChange={(e) => setNote(e.target.value)} style={{ width: 160 }} /> <button className="btn" onClick={async () => { await api.resolveFlag(f.id, note); setNote(""); load(); }}>resolve</button></td></tr>)}</tbody></table></div>}
@@ -98,6 +106,17 @@ export default function EditorialPage() {
           <DeptSwatch dept={c.department} />{c.department.name} <span className="muted">· {c.hops} hops</span>
           <div>{c.chain.map((n, j) => <span key={n.id}>{j > 0 && <span className="muted"> → </span>}<Link to={`/explore/${n.id}`}>{n.label}</Link></span>)}</div>
         </div>) : <p className="muted">None found.</p>}
+
+        <h3 style={{ marginTop: 14 }}>Structural fragility <Help text="An articulation point is a node whose removal would split the graph into disconnected pieces; a bridge is the equivalent for a single edge. Neither means anything is wrong — it's often just an honest reflection of a genuinely narrow real-world connection — but it's worth knowing where the graph has exactly one path holding two areas together, ranked by betweenness centrality (how much real traffic between other node-pairs already flows through it)." /></h3>
+        {fragility && fragility.articulationPointIds.size > 0 ? <>
+          <p className="muted">{fragility.articulationPointIds.size} articulation point{fragility.articulationPointIds.size === 1 ? "" : "s"}, {fragility.bridgeEdgeIds.size} bridge edge{fragility.bridgeEdgeIds.size === 1 ? "" : "s"} — top by betweenness:</p>
+          <table><thead><tr><th>Node</th><th>Betweenness</th></tr></thead><tbody>
+            {[...fragility.articulationPointIds].map((id) => nodesById[id]).filter(Boolean)
+              .sort((a, b) => (fragility.betweenness.get(b.id) ?? 0) - (fragility.betweenness.get(a.id) ?? 0)).slice(0, 10)
+              .map((n) => <tr key={n.id}><td><DeptSwatch dept={n.department_id ? deptById[n.department_id] : null} /><Link to={`/explore/${n.id}`}>{n.label}</Link> <span className="muted">{n.type_code}</span></td>
+                <td className="muted">{((fragility.betweenness.get(n.id) ?? 0) * 100).toFixed(0)}%</td></tr>)}
+          </tbody></table>
+        </> : fragility ? <p className="muted">None — the graph has no single point of failure.</p> : <p className="muted">Computing…</p>}
       </div>
 
       <div className="card"><h2>Seed nodes with reviews — ready to promote?</h2><p className="muted">The imported mpi-eva-graph nodes are single-pass drafts. Promote when you judge the identified reviews sufficient; archive what should not enter the journal.</p>
