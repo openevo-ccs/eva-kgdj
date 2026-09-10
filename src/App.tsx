@@ -55,6 +55,7 @@ export default function App() {
             </div>}
           </span>
           <span className="chip">{profile!.role.replace("_", " ")}</span>{profile!.username}
+          <button className="btn btn-mini" onClick={() => api?.signOut()}>Sign out</button>
         </div>
       </header>
       <main className="main">
