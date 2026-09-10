@@ -419,7 +419,11 @@ export class MockApi implements Api {
   async myModules() { return this.members.filter((m) => m.profile_id === this.me_.id).map((m) => ({ module: MODULE, role: m.role })); }
   async joinModule(module_id: string, role: "student" | "affiliate") { if (!this.members.some((m) => m.module_id === module_id && m.profile_id === this.me_.id)) this.members.push({ module_id, profile_id: this.me_.id, role }); }
   async leaveModule(module_id: string) { this.members = this.members.filter((m) => !(m.module_id === module_id && m.profile_id === this.me_.id && ["student", "affiliate"].includes(m.role))); }
-  async graph() { const r = await this.data(); return { nodes: r.nodes.filter((n) => n.status !== "archived"), edges: r.edges.filter((e) => e.status !== "archived") }; }
+  async graph() {
+    const r = await this.data();
+    const nodes = r.nodes.filter((n) => n.status !== "archived").map((n) => ({ ...n, department_ids: n.department_id ? [n.department_id] : [] }));
+    return { nodes, edges: r.edges.filter((e) => e.status !== "archived") };
+  }
   private citationsFor(node_id: string): Citation[] {
     return this.nodeCitationLinks.filter((l) => l.node_id === node_id).map((l) => this.citations.find((c) => c.id === l.citation_id)).filter((c): c is Citation => !!c);
   }

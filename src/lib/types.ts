@@ -27,6 +27,13 @@ export interface GraphNode {
   id: string; slug: string; label: string; type_code: string; description: string; department_id: string | null;
   status: RecordStatus; external_ids: Record<string, unknown>; provenance: Provenance; tags: string[]; version: number;
   created_by: string | null; created_at: string; updated_at: string; canonical_since: string | null;
+  // Complete department membership (kgdj.node_departments) -- department_id above stays
+  // the primary/single department for the ~majority of nodes that have exactly one;
+  // this covers real multi-department content (mpi-eva-graph's institute-wide layer)
+  // that department_id alone can't represent. Always includes department_id itself
+  // when one exists. Populated by graph()/api.graph() call sites, so optional for
+  // any other code path that builds a GraphNode without it.
+  department_ids?: string[];
 }
 export interface GraphEdge {
   id: string; source_node_id: string; target_node_id: string; relationship_code: string; label: string | null; weight: number;

@@ -32,6 +32,13 @@ export interface PhysicsParams {
   rankSep: number;         // dagre: spacing between ranks (along the flow direction)
   ringSpacing: number;     // concentric: pixel width of each ring
 }
+// Real multi-department nodes top out at 5 departments today (mpi-eva-graph's
+// institute-wide layer, kgdj.node_departments) -- 6 gives one slot of headroom.
+// Cytoscape's pie styling supports up to 16 (pie-1-background-color..pie-16-*); the
+// "node.pie" stylesheet rule below has to name each pie-N-* selector explicitly, so
+// this constant and that rule must stay in sync if the real data ever needs more.
+const PIE_MAX_SLICES = 6;
+
 export const DEFAULT_PHYSICS: PhysicsParams = {
   spacing: 8000, edgeLength: 70, gravity: 0.25, infinite: true, dagreDirection: "LR",
   edgeElasticity: 100, nodeSep: 18, rankSep: 90, ringSpacing: 2,
@@ -117,7 +124,25 @@ export function GraphCanvas(p: GraphCanvasProps) {
       const comm = p.communities?.get(n.id);
       const color = comm != null && p.communityColors ? p.communityColors[comm % p.communityColors.length] : dept?.color_hex || "#8a8f99";
       const pos = p.positions?.[n.id];
-      els.push({ data: { id: n.id, label: n.label, color, status: n.status, student: (n.provenance?.source as string) === "kgdj" ? 1 : 0, type: n.type_code, deg: degree.get(n.id) || 0 }, classes: n.status + (n.provenance?.shared ? " shared" : ""), ...(pos ? { position: { x: pos.x, y: pos.y } } : {}) });
+      // Real multi-department nodes (mpi-eva-graph's institute-wide layer -- theories/
+      // topics genuinely spanning 2-5 departments, kgdj.node_departments) render as a
+      // pie-sliced circle, one wedge per department, instead of a misleading single
+      // color -- cytoscape's own native pie-background-* styling (see the "node.pie"
+      // selector below), not a plugin. Community-analysis mode still wins outright (a
+      // node's community is one fact, not several) -- pie only applies to the plain
+      // department view.
+      const deptIds = (comm == null && (n.department_ids?.length ?? 0) > 1) ? n.department_ids! : null;
+      const pieData: Record<string, string | number> = {};
+      if (deptIds) {
+        const slices = deptIds.slice(0, PIE_MAX_SLICES);
+        const size = 100 / slices.length;
+        // Explicit zero-size fill for every unused slice index, not left undefined --
+        // cytoscape's data() mapper on a missing property is a style warning waiting to
+        // happen, not a guaranteed silent 0.
+        for (let i = 1; i <= PIE_MAX_SLICES; i++) { pieData[`pieColor${i}`] = "#8a8f99"; pieData[`pieSize${i}`] = 0; }
+        slices.forEach((id, i) => { pieData[`pieColor${i + 1}`] = p.deptById[id]?.color_hex || "#8a8f99"; pieData[`pieSize${i + 1}`] = size; });
+      }
+      els.push({ data: { id: n.id, label: n.label, color, status: n.status, student: (n.provenance?.source as string) === "kgdj" ? 1 : 0, type: n.type_code, deg: degree.get(n.id) || 0, ...pieData }, classes: n.status + (n.provenance?.shared ? " shared" : "") + (deptIds ? " pie" : ""), ...(pos ? { position: { x: pos.x, y: pos.y } } : {}) });
     }
     const ids = new Set(p.nodes.map((n) => n.id));
     for (const e of p.edges) {
@@ -129,6 +154,18 @@ export function GraphCanvas(p: GraphCanvasProps) {
         container: host.current, elements: els, minZoom: 0.15, maxZoom: 4, wheelSensitivity: 0.25, boxSelectionEnabled: true, selectionType: "single",
         style: [
           { selector: "node", style: { "background-color": "data(color)", label: "data(label)", "font-size": 9, color: "#2a2d33", "text-valign": "bottom", "text-margin-y": 3, "text-wrap": "ellipsis", "text-max-width": "110", width: 16, height: 16, "border-width": 1.5, "border-color": "#fff", "text-background-color": "#fbfbf9", "text-background-opacity": 0.85, "text-background-padding": "1px" } },
+          // Real multi-department nodes: one pie wedge per department (data(pieColorN)/
+          // pieSizeN), built in the elements loop above. Overrides the plain
+          // background-color rule via selector specificity/order, not a separate class of
+          // node otherwise — everything else about ".pie" nodes (size, border, labels,
+          // encoding-driven sizing below) stays identical to a normal node.
+          { selector: "node.pie", style: Object.fromEntries([
+            ["pie-size", "100%"],
+            ...Array.from({ length: PIE_MAX_SLICES }, (_, i) => i + 1).flatMap((i) => [
+              [`pie-${i}-background-color`, `data(pieColor${i})`],
+              [`pie-${i}-background-size`, `data(pieSize${i})`],
+            ]),
+          ]) as Record<string, string> },
           // sizeScore/widthScore are written by the encoding effect below, 0..1 already gamma-adjusted
           // by the user's scale slider — the mapData range here stays fixed on purpose (see gamma()).
           { selector: "node.sized-score", style: { width: "mapData(sizeScore, 0, 1, 12, 46)", height: "mapData(sizeScore, 0, 1, 12, 46)" } },

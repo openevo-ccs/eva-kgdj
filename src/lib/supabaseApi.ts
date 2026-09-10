@@ -101,14 +101,20 @@ export class SupabaseApi implements Api {
   async joinModule(module_id: string, role: "student" | "affiliate") { const id = await this.uid(); must(await this.t("module_members").insert({ module_id, profile_id: id, member_role: role })); }
   async leaveModule(module_id: string) { const id = await this.uid(); must(await this.t("module_members").delete().eq("module_id", module_id).eq("profile_id", id)); }
   async graph() {
-    // nodes and edges don't depend on each other — fetching them in parallel instead of
-    // sequentially halves this call's network latency, which is most of what makes the
-    // canonical graph "feel slow to load" on first navigation to Explorer.
-    const [nodesRes, edgesRes] = await Promise.all([
+    // nodes, edges and department memberships don't depend on each other — fetching them
+    // in parallel instead of sequentially is most of what makes the canonical graph "feel
+    // slow to load" on first navigation to Explorer.
+    const [nodesRes, edgesRes, deptsRes] = await Promise.all([
       this.t("nodes").select("*").neq("status", "archived"),
       this.t("edges").select("*").neq("status", "archived"),
+      this.t("node_departments").select("node_id, department_id"),
     ]);
-    return { nodes: must(nodesRes) as GraphNode[], edges: must(edgesRes) as GraphEdge[] };
+    const nodes = must(nodesRes) as GraphNode[];
+    const deptRows = must(deptsRes) as { node_id: string; department_id: string }[];
+    const byNode = new Map<string, string[]>();
+    for (const r of deptRows) (byNode.get(r.node_id) ?? byNode.set(r.node_id, []).get(r.node_id)!).push(r.department_id);
+    for (const n of nodes) n.department_ids = byNode.get(n.id) ?? (n.department_id ? [n.department_id] : []);
+    return { nodes, edges: must(edgesRes) as GraphEdge[] };
   }
   async node(id: string): Promise<NodeDetail> {
     const node = must(await this.t("nodes").select("*").eq("id", id).single()) as GraphNode;

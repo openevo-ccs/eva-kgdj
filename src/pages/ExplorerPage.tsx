@@ -92,7 +92,14 @@ export default function ExplorerPage() {
 
   const visible = useMemo(() => {
     const s = q.trim().toLowerCase();
-    const vn = nodes.filter((n) => statuses.has(n.status) && types.has(n.type_code) && (!n.department_id || depts.has(n.department_id)) && (!s || n.label.toLowerCase().includes(s) || n.description.toLowerCase().includes(s) || n.tags.some((t) => t.toLowerCase().includes(s))));
+    // A node matches the department filter if ANY of its real departments (department_ids
+    // — see lib/types.ts) is checked. Used to be "!n.department_id || ..." (always show a
+    // department-less node) — found live, 2026-09-10: with "none" checked, that let 18
+    // genuinely multi-department nodes (mpi-eva-graph's institute-wide layer, recorded with
+    // no single department_id) show anyway, so "none" didn't mean none. Every node now has
+    // real department_ids (kgdj.node_departments, backfilled for single-department nodes
+    // too), so this is a plain, honest membership check with no escape hatch.
+    const vn = nodes.filter((n) => statuses.has(n.status) && types.has(n.type_code) && (n.department_ids ?? []).some((id) => depts.has(id)) && (!s || n.label.toLowerCase().includes(s) || n.description.toLowerCase().includes(s) || n.tags.some((t) => t.toLowerCase().includes(s))));
     const ids = new Set(vn.map((n) => n.id));
     return { nodes: vn, edges: edges.filter((e) => ids.has(e.source_node_id) && ids.has(e.target_node_id) && statuses.has(e.status)) };
   }, [nodes, edges, depts, statuses, types, q]);
@@ -255,6 +262,7 @@ export default function ExplorerPage() {
               <Tip text="Imported seed or submitted proposal; needs identified reviews before an editor promotes it"><span><span className="dept-sw" style={{ background: "#fff", border: "2px dashed #7a4d9c" }} />proposed / pending review</span></Tip>
               <Tip text="Created through an approved member proposal"><span><span className="dept-sw" style={{ background: "#fff", border: "3px double #7a2027" }} />member-authored (approved)</span></Tip>
               <Tip text="Touches a live science-communication sensitivity — read the description before quoting it publicly"><span><span className="dept-sw" style={{ background: "#fbf3e3", border: "1.5px solid #c9932e" }} />scicomm-sensitive</span></Tip>
+              <Tip text="A node that genuinely belongs to more than one department — each wedge is one of its real departments, not a blend"><span><span className="dept-sw" style={{ background: "conic-gradient(#1a6b46 0 33%, #7a4d9c 33% 66%, #c9932e 66% 100%)" }} />multi-department</span></Tip>
               {analysis === "communities" && <span>{commCount} communities</span>}
               <span className="muted">Ctrl+click: multi-select · scroll: zoom · drag: pan</span>
             </div>
