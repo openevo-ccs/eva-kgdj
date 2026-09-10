@@ -403,8 +403,11 @@ export class MockApi implements Api {
   private isInstructor() { return this.members.some((m) => m.profile_id === this.me_.id && ["instructor", "assistant"].includes(m.role)); }
 
   async getSession() { return this.signedIn ? { userId: this.me_.id, email: `${this.me_.username}@example.invalid` } : null; }
-  async signInWithEmail(_email: string) { this.signedIn = true; this.listeners.forEach((l) => l({ userId: this.me_.id, email: null })); return { sent: true, message: "Mock mode: signed in immediately, no code needed." }; }
-  async verifyEmailCode(_email: string, _code: string) { return { ok: true, message: "" }; }
+  async signUp(_email: string, _password: string) { this.signedIn = true; this.listeners.forEach((l) => l({ userId: this.me_.id, email: null })); return { ok: true, message: "Mock mode: account created, signed in immediately." }; }
+  async signInWithPassword(_email: string, _password: string) { this.signedIn = true; this.listeners.forEach((l) => l({ userId: this.me_.id, email: null })); return { ok: true, message: "" }; }
+  async requestPasswordReset(email: string) { return { ok: true, message: `Mock mode: a reset link would be sent to ${email}.` }; }
+  async setNewPassword(_password: string) { return { ok: true, message: "Mock mode: password set." }; }
+  onPasswordRecovery(_cb: () => void) { return () => {}; }
   async signOut() { this.signedIn = false; this.listeners.forEach((l) => l(null)); }
   onAuthChange(cb: (s: Session | null) => void) { this.listeners.push(cb); return () => { this.listeners = this.listeners.filter((l) => l !== cb); }; }
   async me() { return this.signedIn ? this.me_ : null; }

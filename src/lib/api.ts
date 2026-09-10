@@ -34,9 +34,18 @@ export interface Api {
   readonly mode: "supabase" | "mock";
   // auth
   getSession(): Promise<Session | null>;
-  signInWithEmail(email: string): Promise<{ sent: boolean; message: string }>;
-  /** Second half of code sign-in: the 6 digits from the email, typed in the same tab. */
-  verifyEmailCode(email: string, code: string): Promise<{ ok: boolean; message: string }>;
+  // Email + password (2026-09-10, replacing the code-based sign-in built earlier the
+  // same day): simpler, no round trip through email for the everyday case, and no
+  // custom email template to keep paired with the frontend build — signInWithPassword
+  // needs no email at all, and requestPasswordReset uses Supabase's own untouched
+  // default "Reset Password" template rather than one this app maintains.
+  signUp(email: string, password: string): Promise<{ ok: boolean; message: string }>;
+  signInWithPassword(email: string, password: string): Promise<{ ok: boolean; message: string }>;
+  requestPasswordReset(email: string): Promise<{ ok: boolean; message: string }>;
+  /** Completes a password-reset link: sets a new password on the account the recovery session belongs to. */
+  setNewPassword(password: string): Promise<{ ok: boolean; message: string }>;
+  /** Fires once when the user has clicked a password-reset link and a recovery session is active — the UI should show "set a new password" instead of the normal sign-in form until this resolves. */
+  onPasswordRecovery(cb: () => void): () => void;
   signOut(): Promise<void>;
   onAuthChange(cb: (s: Session | null) => void): () => void;
   me(): Promise<Profile | null>;

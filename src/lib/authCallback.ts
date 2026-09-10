@@ -1,23 +1,25 @@
-// Residual sign-in failures arriving on the URL.
+// Residual auth failures arriving on the URL.
 //
-// KGDJ now signs people in with a 6-digit code typed in the same tab, so there is
-// normally no redirect back into the app at all. This module exists for the cases
-// where one happens anyway: a magic link issued before the switch, an invitation
-// link, or an email-change confirmation. Supabase reports those failures as URL
-// parameters — in the hash for the implicit flow, in the query string otherwise.
+// KGDJ signs people in with an email + password (2026-09-10) — no redirect, no link,
+// nothing here to fail for the everyday case. The one path that still sends someone a
+// link is "forgot password" (Supabase's own default Reset Password template). This
+// module handles that link failing: expired, or already used. Supabase reports the
+// failure as URL parameters — in the hash for the implicit flow, in the query string
+// otherwise.
 //
-// Nothing in the app used to read them. A student whose link had expired, or whose
-// link had already been consumed by an institutional mail scanner, was shown an
-// ordinary, pristine sign-in form with no message of any kind (verified against the
-// live GitHub Pages build on 2026-09-09: the page was character-identical to a fresh
-// visit). They would assume a typo, request another, and hit the 2-per-hour cap.
+// The earlier code-based sign-in this replaced had the same silent failure this module
+// was built to fix: a failed link left an ordinary, pristine sign-in form with no
+// message of any kind (verified against the live GitHub Pages build on 2026-09-09).
+// That discipline carries over even though the trigger is now narrower — a failed
+// password-reset link should be exactly as visible as a failed sign-in link was made
+// to be.
 //
 // Read once at startup, BEFORE HashRouter mounts — it treats `#error=...` as a route
 // path, which matches nothing and renders a blank page under the nav bar — and clear
 // the parameters so a stale error cannot wedge routing on later navigations.
 //
 // Only error payloads are touched. An `access_token` is left strictly alone for
-// supabase-js to consume, so any still-valid link keeps working.
+// supabase-js to consume, so a still-valid reset link keeps working.
 
 let captured: string | null = null;
 
@@ -30,16 +32,16 @@ function describe(p: URLSearchParams): string {
   const code = (p.get("error_code") || "").toLowerCase();
   const desc = (p.get("error_description") || p.get("error") || "").replace(/\+/g, " ");
   const all = (code + " " + desc).toLowerCase();
-  // Same three cases friendlyAuthError() covers in supabaseApi.ts, kept separate on
-  // purpose: this module must stay importable without pulling in the Supabase client,
-  // so the mock build does not carry it.
+  // Same cases friendlyAuthError() covers in supabaseApi.ts, kept separate on purpose:
+  // this module must stay importable without pulling in the Supabase client, so the
+  // mock build does not carry it.
   if (all.includes("signup") || all.includes("not allowed"))
-    return "That address is not on the KGDJ allowlist. Sign-in is open to @eva.mpg.de and @uni-leipzig.de addresses, plus invited ones. Ask an editor for an invitation.";
+    return "That address is not on the KGDJ allowlist. Accounts are limited to @eva.mpg.de and @uni-leipzig.de addresses, plus invited ones. Ask an editor for an invitation.";
   if (all.includes("expired") || all.includes("otp"))
-    return "That sign-in link has expired or was already used. Links work only once, and some mail systems open them automatically before you do. Ask for a code below instead: a code is typed in, so nothing can use it up before you.";
+    return "That password-reset link has expired or was already used. Links work only once. Use \"Forgot password\" again to send a fresh one.";
   return desc
-    ? `Sign-in did not complete: ${desc}`
-    : "Sign-in did not complete. Ask for a code below.";
+    ? `That didn't complete: ${desc}`
+    : "That didn't complete. Try again below.";
 }
 
 /** Call once, before rendering. Captures and clears any auth error on the URL. */
