@@ -8,7 +8,7 @@ import { portfolioMetrics } from "./report";
 import type {
   Citation, CitationCoverage, CohortStats, CommonsDecisionRow, CommonsItem, CommonsItemT, CommonsLink, CommonsParticipant, CommonsParticipantStatus, CommonsProposal, CommonsProposalDetail, CommonsReview, CommonsRole,
   CommonsSpace, CommonsSpaceDetail, ConsentPurpose, ContentFlag, ContentFlagTargetKind, Department, EdgeDetail, EditorialDecision, GraphEdge, GraphNode, ItemComment, ItemCommentTarget, LeaderboardRow, MetricKey, Module, ModuleMemberRole,
-  NodeDetail, PrivateNode, PrivateNodeType, Profile, Proposal, ProposalDetail, ProposalStatus, ResearchGroup, Review, ReviewFlag, ReviewSummary, ReviewTarget, Session, Subgraph, SubgraphDetail, SubgraphLink, SubgraphNode, Visibility,
+  NodeDetail, PrivateNode, PrivateNodeType, Profile, Proposal, ProposalDetail, ProposalStatus, ResearchGroup, Review, ReviewFlag, ReviewSummary, ReviewTarget, Session, Subgraph, SubgraphDetail, SubgraphLink, SubgraphNode, Visibility, RosterRow,
 } from "./types";
 import { isVerifiedCitation } from "./types";
 
@@ -598,6 +598,19 @@ export class MockApi implements Api {
     const metrics: CohortStats["metrics"] = {};
     for (const k of Object.keys(ms[0]) as MetricKey[]) { const vs = ms.map((m) => m[k]); metrics[k] = { mean: Math.round((vs.reduce((a, b) => a + b, 0) / vs.length) * 10) / 10, median: median(vs), p75: quantile(vs, 0.75), max: Math.max(...vs) }; }
     return { scope, n: ids.length, metrics };
+  }
+  async instructorRoster(module_id: string): Promise<RosterRow[]> {
+    const r = await this.data(); const byId = Object.fromEntries(r.nodes.map((n) => [n.id, n]));
+    return this.members.filter((m) => m.module_id === module_id).map((m) => {
+      const p = EVERYONE.find((x) => x.id === m.profile_id);
+      const g = this.sgList.find((x) => x.owner_id === m.profile_id && x.module_id === module_id);
+      const metrics = g ? portfolioMetrics({ subgraph: g, nodes: this.sgNodes.filter((n) => n.subgraph_id === g.id), privateNodes: this.privNodes.filter((n) => n.subgraph_id === g.id), links: this.links.filter((l) => l.subgraph_id === g.id), reviews: this.reviews.filter((x) => x.subgraph_id === g.id), full_access: true }, byId) : null;
+      return {
+        profile_id: m.profile_id, username: p?.username ?? m.profile_id, full_name: p?.full_name ?? null, member_role: m.role, joined_at: now(),
+        subgraph_id: g?.id ?? null, subgraph_title: g?.title ?? null, subgraph_visibility: g?.visibility ?? null,
+        last_checkpoint_week: g?.last_checkpoint_week ?? null, subgraph_updated_at: g?.created_at ?? null, metrics,
+      };
+    }).sort((a, b) => a.username.localeCompare(b.username));
   }
   async commonsItems(module_id?: string | null): Promise<CommonsItem[]> {
     const r = await this.data(); const byId = Object.fromEntries(r.nodes.map((n) => [n.id, n]));

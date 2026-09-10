@@ -107,6 +107,15 @@ export type MetricKey = "canonical_nodes" | "annotated_nodes" | "avg_annotation_
 export type PortfolioMetrics = Record<MetricKey, number>;
 export interface CohortStats { scope: "module" | "program" | "members"; n: number; metrics: Record<string, { mean: number; median: number; p75: number; max: number }> | null; reason?: string }
 
+// One row per (module, student), for the instructor-facing view (kgdj.module_roster,
+// 0011_instructor_roster.sql). subgraph_id null means the student hasn't started a
+// portfolio yet -- a real, distinct state from "started but empty," not absent data.
+export interface RosterRow {
+  profile_id: string; username: string; full_name: string | null; member_role: ModuleMemberRole; joined_at: string;
+  subgraph_id: string | null; subgraph_title: string | null; subgraph_visibility: string | null;
+  last_checkpoint_week: number | null; subgraph_updated_at: string | null; metrics: PortfolioMetrics | null;
+}
+
 // One shared node/private-node/link — the older, per-item "share with my module" feed
 // (migration 0006, pages/CommonsPage.tsx's "Shared items" tab). Distinct from Commons
 // Spaces below (migration 0007): this is one person's portfolio item made visible;

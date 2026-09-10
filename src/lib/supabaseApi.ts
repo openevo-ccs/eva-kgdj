@@ -7,7 +7,7 @@ import type { PortfolioBackup } from "./backup";
 import type {
   Citation, CohortStats, CommonsItem, CommonsItemT, CommonsLink, CommonsParticipant, CommonsParticipantStatus, CommonsProposal, CommonsProposalDetail, CommonsReview, CommonsRole, CommonsSpace,
   CitationCoverage, CommonsSpaceDetail, ConsentPurpose, ContentFlag, ContentFlagTargetKind, Department, EdgeDetail, GraphEdge, GraphNode, ItemComment, ItemCommentTarget, LeaderboardRow, Module, ModuleMemberRole, NodeDetail, PrivateNode, PrivateNodeType,
-  Profile, Proposal, ProposalDetail, ProposalStatus, ResearchGroup, Review, ReviewFlag, ReviewSummary, ReviewTarget, Session, Subgraph, SubgraphDetail, SubgraphLink, SubgraphNode, Visibility,
+  Profile, Proposal, ProposalDetail, ProposalStatus, ResearchGroup, Review, ReviewFlag, ReviewSummary, ReviewTarget, Session, Subgraph, SubgraphDetail, SubgraphLink, SubgraphNode, Visibility, RosterRow,
 } from "./types";
 
 // Supabase's auth errors are written for developers ("Invalid login credentials").
@@ -281,6 +281,9 @@ export class SupabaseApi implements Api {
     return g;
   }
   async cohortStats(scope: "module" | "program" | "members", module_id?: string | null) { return must(await this.sb.rpc("portfolio_cohort_stats", { scope, module: module_id ?? null })) as CohortStats; }
+  async instructorRoster(module_id: string): Promise<RosterRow[]> {
+    return (must(await this.t("module_roster").select("*").eq("module_id", module_id).order("username")) as RosterRow[]);
+  }
   async commonsItems(module_id?: string | null): Promise<CommonsItem[]> {
     // RLS on subgraph_nodes/private_nodes/links already restricts .eq("shared", true) rows to
     // "mine, or in a module I'm in" (0006_portfolio_ux.sql) — sequential lookups, not nested

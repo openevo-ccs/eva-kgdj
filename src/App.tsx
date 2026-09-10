@@ -12,6 +12,7 @@ import CommonsSpacePage from "./pages/CommonsSpacePage";
 import CommonsProposalPage from "./pages/CommonsProposalPage";
 import LeaderboardPage from "./pages/LeaderboardPage";
 import AccountPage from "./pages/AccountPage";
+import InstructorPage from "./pages/InstructorPage";
 import { Tour, tourDone } from "./components/Tour";
 import { Tip } from "./components/Tip";
 
@@ -19,10 +20,12 @@ const NAV_TIP: Record<string, string> = {
   explore: "The canonical, peer-reviewed graph of the institute's research", proposals: "Propose and review changes to the canonical graph", portfolio: "Your own orientation graph, built on the canonical one",
   commons: "Joint-curation spaces your module can propose, review and decide together — plus items classmates shared individually",
   editorial: "Editors: decide on proposals and promote reviewed seed nodes", leaderboard: "Many boards for many strengths — opt in from Account", account: "Affiliation, consent, data export, deletion",
+  class: "Instructors/assistants: your own module's students, by name — portfolio progress and checkpoints",
 };
 
 export default function App() {
-  const { api, session, profile, loading } = useSession();
+  const { api, session, profile, myModules, loading } = useSession();
+  const teaching = myModules.some((m) => m.role === "instructor" || m.role === "assistant");
   const [tour, setTour] = useState(false); const [help, setHelp] = useState(false);
   useEffect(() => { const on = () => setTour(true); window.addEventListener("kgdj:tour", on); return () => window.removeEventListener("kgdj:tour", on); }, []);
   useEffect(() => { if (session && profile && !tourDone()) { const t = setTimeout(() => setTour(true), 900); return () => clearTimeout(t); } }, [session, profile]);
@@ -40,6 +43,7 @@ export default function App() {
           <Tip text={NAV_TIP.portfolio} place="bottom"><NavLink to="/portfolio" data-tour="nav-portfolio">Portfolio</NavLink></Tip>
           <Tip text={NAV_TIP.commons} place="bottom"><NavLink to="/commons" data-tour="nav-commons">Commons</NavLink></Tip>
           {isEditor(profile) && <Tip text={NAV_TIP.editorial} place="bottom"><NavLink to="/editorial">Editorial</NavLink></Tip>}
+          {teaching && <Tip text={NAV_TIP.class} place="bottom"><NavLink to="/instructor">Class</NavLink></Tip>}
           <Tip text={NAV_TIP.leaderboard} place="bottom"><NavLink to="/leaderboard" data-tour="nav-leaderboard">Leaderboards</NavLink></Tip>
           <Tip text={NAV_TIP.account} place="bottom"><NavLink to="/account" data-tour="nav-account">Account</NavLink></Tip>
         </nav>
@@ -67,6 +71,7 @@ export default function App() {
           <Route path="/proposals/new" element={<NewProposalPage />} />
           <Route path="/proposals/:id" element={<ProposalPage />} />
           <Route path="/editorial" element={isEditor(profile) ? <EditorialPage /> : <Navigate to="/explore" replace />} />
+          <Route path="/instructor" element={teaching ? <InstructorPage /> : <Navigate to="/explore" replace />} />
           <Route path="/portfolio" element={<PortfolioPage />} />
           <Route path="/portfolio/:id" element={<PortfolioPage />} />
           <Route path="/commons" element={<CommonsPage />} />

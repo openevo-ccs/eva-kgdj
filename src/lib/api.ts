@@ -7,7 +7,7 @@ import type {
   CommonsReview, CommonsRole, CommonsSpace, CommonsSpaceDetail, ConsentPurpose, Decision, Department, EdgeDetail, EditorialDecision, GraphEdge, GraphNode, ItemComment, ItemCommentTarget, LeaderboardRow,
   Module, ModuleMemberRole, NodeDetail, PrivateNode, PrivateNodeType, Profile, Proposal, ProposalDetail, ProposalStatus, Rating, ResearchGroup, Review, ReviewFlag, ReviewSummary,
   ReviewTarget, Session, Subgraph, SubgraphDetail, SubgraphLink, Visibility, ChangeType, CommonsJoinPolicy,
-  ContentFlag, ContentFlagTargetKind, CitationCoverage,
+  ContentFlag, ContentFlagTargetKind, CitationCoverage, RosterRow,
 } from "./types";
 import type { PortfolioBackup } from "./backup";
 
@@ -114,6 +114,11 @@ export interface Api {
   unshare(subgraph_id: string, username: string): Promise<void>;
   importPortfolio(b: PortfolioBackup, title: string, module_id: string | null): Promise<Subgraph>;
   cohortStats(scope: "module" | "program" | "members", module_id?: string | null): Promise<CohortStats>;
+  // Instructor-facing per-student roster for one module (kgdj.module_roster) — RLS-gated
+  // to the module's instructor/assistant/admin, same as cohortStats but identified, not
+  // anonymised: this is the one place a named student's own progress is meant to be
+  // visible to a specific person by role, not aggregated away.
+  instructorRoster(module_id: string): Promise<RosterRow[]>;
   commonsItems(module_id?: string | null): Promise<CommonsItem[]>;
   // commons spaces (0007) — see docs/kgdj/04-commons-design.md
   commonsSpaces(): Promise<CommonsSpace[]>;
