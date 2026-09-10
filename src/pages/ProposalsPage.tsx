@@ -20,14 +20,28 @@ export default function ProposalsPage() {
   const api = useApi(); const { profile } = useSession();
   const [rows, setRows] = useState<Proposal[]>([]);
   const [mine, setMine] = useState(false);
+  const [nodes, setNodes] = useState<GraphNode[]>([]); const [edges, setEdges] = useState<GraphEdge[]>([]);
   useEffect(() => { api.proposals(mine ? { mine: true } : undefined).then(setRows); }, [mine]);
+  // Only the proposal's change type ever showed in the list -- you had to open each one
+  // to find out what it was actually about. Cheap fix: the same graph() fetch
+  // NewProposalPage already does, used here only to resolve a target label per row.
+  useEffect(() => { api.graph().then((g) => { setNodes(g.nodes); setEdges(g.edges); }); }, []);
+  const nodeLabel = (id: string | null) => (id && nodes.find((n) => n.id === id)?.label) || null;
+  const edgeLabel = (id: string | null) => { const e = id && edges.find((x) => x.id === id); return e ? `${nodeLabel(e.source_node_id) ?? "?"} → ${nodeLabel(e.target_node_id) ?? "?"}` : null; };
+  const targetOf = (p: Proposal): string => {
+    const payload = p.payload as { label?: string; source_node_id?: string; target_node_id?: string };
+    if (p.change_type === "add_node") return payload.label || "(untitled)";
+    if (p.change_type === "edit_node" || p.change_type === "archive_node") return nodeLabel(p.target_node_id) || "(node)";
+    if (p.change_type === "add_edge") return `${nodeLabel(payload.source_node_id ?? null) ?? "?"} → ${nodeLabel(payload.target_node_id ?? null) ?? "?"}`;
+    return edgeLabel(p.target_edge_id) || "(edge)";
+  };
   return (
     <div className="page page-narrow">
       <div className="row" style={{ justifyContent: "space-between" }}><h1>Proposals <Help text="Every change to the canonical graph is a proposal: a rationale, at least one citation for additions and edits, peer reviews by anyone (never the submitter), then an editorial decision." /></h1><div className="row"><label className="chip"><input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} /> only mine</label><Link className="btn btn-primary" to="/proposals/new">New proposal</Link></div></div>
       <p className="muted">Anyone may review any submitted proposal (never their own). Editors decide once the reviews are sufficient. Submitters may stay anonymous towards members; reviewers are always identified.</p>
-      <table><thead><tr><th>Change</th><th>Rationale</th><th>Submitter</th><th>Status</th><th>Updated</th></tr></thead>
-        <tbody>{rows.map((p) => <tr key={p.id}><td><Link to={`/proposals/${p.id}`}>{CHANGE_LABEL[p.change_type]}</Link></td><td>{p.rationale.slice(0, 120)}{p.rationale.length > 120 ? "…" : ""}</td><td>{p.proposer_id ? (p.proposer_id === profile?.id ? "you" : "member") : <span className="muted">anonymous</span>}</td><td><Tip text={STATUS_TIP[p.status] || p.status}><StatusChip status={p.status} /></Tip></td><td className="muted">{new Date(p.updated_at).toLocaleDateString()}</td></tr>)}
-          {!rows.length && <tr><td colSpan={5} className="muted">No proposals yet. Open a node in the Graph and use "propose", or start a new one above.</td></tr>}</tbody></table>
+      <table><thead><tr><th>Change</th><th>Target</th><th>Rationale</th><th>Submitter</th><th>Status</th><th>Updated</th></tr></thead>
+        <tbody>{rows.map((p) => <tr key={p.id}><td><Link to={`/proposals/${p.id}`}>{CHANGE_LABEL[p.change_type]}</Link></td><td>{targetOf(p)}</td><td>{p.rationale.slice(0, 120)}{p.rationale.length > 120 ? "…" : ""}</td><td>{p.proposer_id ? (p.proposer_id === profile?.id ? "you" : "member") : <span className="muted">anonymous</span>}</td><td><Tip text={STATUS_TIP[p.status] || p.status}><StatusChip status={p.status} /></Tip></td><td className="muted">{new Date(p.updated_at).toLocaleDateString()}</td></tr>)}
+          {!rows.length && <tr><td colSpan={6} className="muted">No proposals yet. Open a node in the Graph and use "propose", or start a new one above.</td></tr>}</tbody></table>
     </div>
   );
 }
