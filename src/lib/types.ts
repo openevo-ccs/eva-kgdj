@@ -12,6 +12,7 @@ export type Visibility = "private" | "shared" | "module" | "members";
 export type ConsentPurpose = "portfolio_processing" | "peer_review_visibility" | "leaderboard_display" | "canonical_attribution";
 export type PrivateNodeType = "self" | "question" | "resource" | "theory" | "method";
 export type ModuleMemberRole = "student" | "instructor" | "assistant" | "affiliate";
+export type FeedbackTag = "problem" | "request" | "other";
 
 export interface Provenance { source?: string; status?: string; verification?: string[]; assigned_by?: string; retrieved?: string; approved_at?: string; approved_by?: string; [k: string]: unknown }
 

@@ -15,6 +15,7 @@ import AccountPage from "./pages/AccountPage";
 import InstructorPage from "./pages/InstructorPage";
 import { Tour, tourDone } from "./components/Tour";
 import { Tip } from "./components/Tip";
+import { FeedbackWidget } from "./components/FeedbackWidget";
 
 const NAV_TIP: Record<string, string> = {
   explore: "The canonical, peer-reviewed graph of the institute's research", proposals: "Propose and review changes to the canonical graph", portfolio: "Your own orientation graph, built on the canonical one",
@@ -87,6 +88,7 @@ export default function App() {
         </Routes>
       </main>
       <Tour open={tour} onClose={() => setTour(false)} />
+      <FeedbackWidget />
     </div>
   );
 }

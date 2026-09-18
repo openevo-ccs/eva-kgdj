@@ -7,7 +7,7 @@ import type {
   CommonsReview, CommonsRole, CommonsSpace, CommonsSpaceDetail, ConsentPurpose, Decision, Department, EdgeDetail, EditorialDecision, GraphEdge, GraphNode, ItemComment, ItemCommentTarget, LeaderboardRow,
   Module, ModuleMemberRole, NodeDetail, PrivateNode, PrivateNodeType, Profile, Proposal, ProposalDetail, ProposalStatus, Rating, ResearchGroup, Review, ReviewFlag, ReviewSummary,
   ReviewTarget, Session, Subgraph, SubgraphDetail, SubgraphLink, Visibility, ChangeType, CommonsJoinPolicy,
-  ContentFlag, ContentFlagTargetKind, CitationCoverage, RosterRow,
+  ContentFlag, ContentFlagTargetKind, CitationCoverage, RosterRow, FeedbackTag,
 } from "./types";
 import type { PortfolioBackup } from "./backup";
 
@@ -29,6 +29,11 @@ export interface CommonsProposalInput {
 }
 export interface CommonsReviewInput { proposal_id: string; rating: Rating; commentary_md: string }
 export interface CommonsDecisionInput { proposal_id: string; outcome: CommonsDecisionOutcome; rationale?: string }
+// A low-friction "problem/request/other" note plus optional screenshot, in whatever
+// page context the submitter was actually looking at -- see FeedbackWidget.tsx and
+// 0014_feedback.sql. Write-only from the app's own perspective (no read method):
+// read via the Supabase dashboard/service role, same as OpenLPM's counterpart.
+export interface FeedbackInput { tag: FeedbackTag; comment: string | null; context: Record<string, unknown>; screenshot?: Blob | null }
 
 export interface Api {
   readonly mode: "supabase" | "mock";
@@ -144,6 +149,8 @@ export interface Api {
   setConsent(purpose: ConsentPurpose, granted: boolean): Promise<void>;
   erase(redactText: boolean): Promise<void>;
   exportMyData(): Promise<unknown>;
+  // feedback (0014) -- see FeedbackInput above.
+  submitFeedback(input: FeedbackInput): Promise<void>;
 }
 
 export async function createApi(): Promise<Api> {

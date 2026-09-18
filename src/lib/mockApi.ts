@@ -2,7 +2,7 @@
 // (scripts/build-mock-data.mjs). Pick a persona with ?as=student|student2|
 // researcher|editor|instructor|admin (default student). State lives for the page
 // session only. No real people, no network.
-import type { Api, CitationInput, CommonsDecisionInput, CommonsProposalInput, CommonsReviewInput, CommonsSpaceInput, DecisionInput, ForkItem, ProfilePatch, ProposalInput, ReviewInput } from "./api";
+import type { Api, CitationInput, CommonsDecisionInput, CommonsProposalInput, CommonsReviewInput, CommonsSpaceInput, DecisionInput, FeedbackInput, ForkItem, ProfilePatch, ProposalInput, ReviewInput } from "./api";
 import type { PortfolioBackup } from "./backup";
 import { portfolioMetrics } from "./report";
 import type {
@@ -813,4 +813,7 @@ export class MockApi implements Api {
   async setConsent(purpose: ConsentPurpose, granted: boolean) { this.consent[purpose] = granted; }
   async erase(_redactText: boolean) { this.signedIn = false; this.listeners.forEach((l) => l(null)); }
   async exportMyData() { return { exported_at: now(), profile: this.me_, proposals: this.propList.filter((p) => p.proposer_id === this.me_.id), reviews: this.reviews.filter((r) => r.reviewer_id === this.me_.id), subgraphs: this.sgList.filter((g) => g.owner_id === this.me_.id) }; }
+  // Nothing to persist and nothing reads it back in real mode either (kgdj.feedback
+  // is write-only by design) -- see FeedbackInput/submitFeedback in api.ts.
+  async submitFeedback(_input: FeedbackInput) {}
 }

@@ -2,7 +2,7 @@
 // Row-Level Security in supabase/migrations/0002_rls.sql (+ 0005_ux.sql) is the
 // authority — nothing here filters for permission, it only shapes queries.
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import type { Api, CitationInput, CommonsDecisionInput, CommonsProposalInput, CommonsReviewInput, CommonsSpaceInput, DecisionInput, ForkItem, ProfilePatch, ProposalInput, ReviewInput } from "./api";
+import type { Api, CitationInput, CommonsDecisionInput, CommonsProposalInput, CommonsReviewInput, CommonsSpaceInput, DecisionInput, FeedbackInput, ForkItem, ProfilePatch, ProposalInput, ReviewInput } from "./api";
 import type { PortfolioBackup } from "./backup";
 import type {
   Citation, CohortStats, CommonsItem, CommonsItemT, CommonsLink, CommonsParticipant, CommonsParticipantStatus, CommonsProposal, CommonsProposalDetail, CommonsReview, CommonsRole, CommonsSpace,
@@ -450,5 +450,16 @@ export class SupabaseApi implements Api {
     ]);
     const detailed = await Promise.all(subgraphs.map((g) => this.subgraph(g.id)));
     return { exported_at: new Date().toISOString(), profile, proposals, reviews: reviews.data, subgraphs: detailed, consents: consents.data };
+  }
+  async submitFeedback(input: FeedbackInput) {
+    const id = await this.uid();
+    let screenshot_path: string | null = null;
+    if (input.screenshot) {
+      const path = `${id}/${crypto.randomUUID()}.jpg`;
+      const { error } = await this.sb.storage.from("kgdj-feedback-screenshots").upload(path, input.screenshot, { contentType: "image/jpeg" });
+      if (error) throw error;
+      screenshot_path = path;
+    }
+    must(await this.t("feedback").insert({ submitted_by: id, tag: input.tag, comment: input.comment, context: input.context, screenshot_path }));
   }
 }
