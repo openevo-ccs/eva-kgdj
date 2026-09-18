@@ -32,6 +32,18 @@ export default function ExplorerPage() {
   const [statuses, setStatuses] = useState<Set<string>>(new Set(["canonical", "proposed"]));
   const [types, setTypes] = useState<Set<string>>(new Set());
   const [q, setQ] = useState("");
+  // Default the Explorer to the viewer's own module rather than the whole institute at
+  // once (08-product-vision.md #2: "the front door is the institute; the student is in
+  // a module" -- at 460 nodes/901 edges the unscoped default renders as an unreadable
+  // blob). The ccp_module import batch is already tagged for exactly this
+  // (provenance.imported_from) rather than needing new modelling; a researcher with no
+  // module keeps today's whole-institute behaviour. One-time default, same pattern as
+  // viewDefaulted below -- never fights a later manual toggle.
+  const [myModuleOnly, setMyModuleOnly] = useState(false);
+  const moduleScopeDefaulted = useRef(false);
+  useEffect(() => {
+    if (!moduleScopeDefaulted.current && myModules.length) { moduleScopeDefaulted.current = true; setMyModuleOnly(true); }
+  }, [myModules]);
   const prefs = useMemo(loadGraphPrefs, []);
   const [layout, setLayout] = useState<LayoutName>(prefs.layout);
   const [physics, setPhysics] = useState<PhysicsParams>(prefs.physics);
@@ -99,10 +111,10 @@ export default function ExplorerPage() {
     // no single department_id) show anyway, so "none" didn't mean none. Every node now has
     // real department_ids (kgdj.node_departments, backfilled for single-department nodes
     // too), so this is a plain, honest membership check with no escape hatch.
-    const vn = nodes.filter((n) => statuses.has(n.status) && types.has(n.type_code) && (n.department_ids ?? []).some((id) => depts.has(id)) && (!s || n.label.toLowerCase().includes(s) || n.description.toLowerCase().includes(s) || n.tags.some((t) => t.toLowerCase().includes(s))));
+    const vn = nodes.filter((n) => statuses.has(n.status) && types.has(n.type_code) && (n.department_ids ?? []).some((id) => depts.has(id)) && (!myModuleOnly || n.provenance?.imported_from === "ccp_module") && (!s || n.label.toLowerCase().includes(s) || n.description.toLowerCase().includes(s) || n.tags.some((t) => t.toLowerCase().includes(s))));
     const ids = new Set(vn.map((n) => n.id));
     return { nodes: vn, edges: edges.filter((e) => ids.has(e.source_node_id) && ids.has(e.target_node_id) && statuses.has(e.status)) };
-  }, [nodes, edges, depts, statuses, types, q]);
+  }, [nodes, edges, depts, statuses, types, q, myModuleOnly]);
   const nodesById = useMemo(() => Object.fromEntries(nodes.map((n) => [n.id, n])), [nodes]);
   const edgesById = useMemo(() => Object.fromEntries(edges.map((e) => [e.id, e])), [edges]);
   const communities = useMemo(() => analysis === "communities" ? labelPropagation(visible.nodes.map((n) => n.id), visible.edges) : null, [analysis, visible]);
@@ -183,8 +195,13 @@ export default function ExplorerPage() {
       <div className="toolbar">
         <ViewToggle view={view} onChange={changeView} />
         {view === "graph" && <Tip text="Fit the whole graph in view now (or the selection, if any) — separate from the auto-fit toggle in the sidebar"><button className="btn" onClick={() => fitGraph(cyRef.current)}>Fit now</button></Tip>}
+        {myModules.length > 0 && <Tip text={myModuleOnly ? "Showing only your module's material — click to see the whole institute" : "Scope back down to just your module's material"}><button className={"btn btn-mini" + (myModuleOnly ? " active" : "")} onClick={() => setMyModuleOnly(!myModuleOnly)}>My module</button></Tip>}
         <span className="muted">{visible.nodes.length} nodes · {visible.edges.length} edges</span>
       </div>
+      {myModuleOnly && <div className="subbar" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span>Showing <b>{myModules[0]?.module.name ?? "your module"}</b>&rsquo;s material only.</span>
+        <button className="btn btn-mini" onClick={() => setMyModuleOnly(false)}>Show the whole institute</button>
+      </div>}
       {(active.explain || analysis === "path") && <div className="subbar">
         {analysis === "path" ? (pathFrom ? <>Start: <b>{nodesById[pathFrom]?.label}</b> — now click the target node.</> : path ? <>Shortest path highlighted: <b>{path.length - 1} steps</b> ({path.map((id) => nodesById[id]?.label).join(" → ")}). Click another start node to search again.</> : <>Click the <b>start</b> node, then the <b>target</b> node.</>) : active.explain}
       </div>}

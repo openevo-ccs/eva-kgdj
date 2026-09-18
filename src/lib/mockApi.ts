@@ -138,6 +138,19 @@ export class MockApi implements Api {
       }
     }
 
+    // The generated mock dataset (scripts/build-mock-data.mjs) mirrors mpi-eva-graph's
+    // generic institute-wide seed only -- it predates, and doesn't include, the real
+    // ccp_module course-content import (GOVERNANCE.md #6: 154 nodes tagged
+    // provenance.imported_from='ccp_module'). ExplorerPage's "scope to my module by
+    // default" view (08-product-vision.md #2) reads exactly that tag, so without this,
+    // every persona with a module would see an empty graph on first load in mock mode.
+    // Approximating it here with the CCP department's own nodes -- the module's actual
+    // subject-matter -- rather than editing the generated file, which the next
+    // `npm run mock:build` would just overwrite anyway.
+    for (const n of r.nodes) {
+      if (n.department_id === "dept-ccp") n.provenance = { ...n.provenance, imported_from: "ccp_module", import_batch: "mock-demo" };
+    }
+
     const tom = bySlug("ccp-theory-theory-of-mind");
     const pid = "p-demo-1";
     this.propList.push({ id: pid, proposer_id: "u-student2", change_type: "edit_node", target_node_id: tom.id, target_edge_id: null,
